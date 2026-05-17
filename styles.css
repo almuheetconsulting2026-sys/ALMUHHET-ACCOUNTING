@@ -531,8 +531,10 @@ body.dark-mode .user-dropdown{background:var(--surface);}
 .settings-card{background:var(--surface);border-radius:var(--rl);padding:22px;box-shadow:var(--sh);}
 .settings-card h3{font-size:.9rem;font-weight:700;color:var(--navy);margin-bottom:18px;display:flex;align-items:center;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--border);}
 .settings-user-card{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;background:var(--surface2);border-radius:14px;margin-bottom:10px;border:1px solid var(--border);}
+.suc-info{display:flex;flex-direction:column;}
 .suc-name{font-size:.88rem;font-weight:700;color:var(--navy);}
 .suc-role{font-size:.72rem;color:var(--muted);margin-top:3px;}
+.suc-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
 .settings-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);}
 .settings-toggle-row:last-child{border-bottom:none;}
 .str-label{font-size:.84rem;font-weight:600;color:var(--text);}

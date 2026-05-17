@@ -669,6 +669,9 @@
         <!-- Users Card -->
         <div class="settings-card">
           <h3>👥 إدارة المستخدمين</h3>
+          <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+            <button class="btn btn-green btn-sm" onclick="showUserModal()">➕ إضافة مستخدم جديد</button>
+          </div>
           <div id="settingsUsersContainer"></div>
           <div style="margin-top:4px;font-size:.72rem;color:var(--muted);">عدد المستخدمين: <span id="settingsUsersCount">—</span></div>
         </div>
@@ -744,6 +747,49 @@
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button class="btn btn-outline" onclick="closeModal('changePwModal')">إلغاء</button>
       <button class="btn btn-navy" onclick="doChangePassword()">💾 حفظ كلمة المرور</button>
+    </div>
+  </div>
+</div>
+
+<!-- MANAGE USER MODAL -->
+<div class="modal" id="manageUserModal">
+  <div class="pw-modal-card">
+    <div class="modal-hdr">
+      <h3 id="manageUserModalTitle">➕ إنشاء مستخدم جديد</h3>
+      <button class="modal-close" onclick="closeModal('manageUserModal')">✕</button>
+    </div>
+    <input type="hidden" id="manageUserOldUsername">
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-group label">اسم المستخدم</label>
+      <input type="text" id="manageUserUsername" class="form-control" placeholder="اكتب اسم المستخدم"
+        style="padding:10px 14px;border:1.5px solid var(--border);border-radius:12px;font-family:Cairo,sans-serif;width:100%;background:var(--surface2);">
+    </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-group label">اسم العرض</label>
+      <input type="text" id="manageUserName" class="form-control" placeholder="اكتب اسم العرض"
+        style="padding:10px 14px;border:1.5px solid var(--border);border-radius:12px;font-family:Cairo,sans-serif;width:100%;background:var(--surface2);">
+    </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-group label">الصلاحية</label>
+      <select id="manageUserRole" class="form-control"
+        style="padding:10px 14px;border:1.5px solid var(--border);border-radius:12px;font-family:Cairo,sans-serif;width:100%;background:var(--surface2);">
+        <option value="user">مستخدم</option>
+        <option value="admin">مدير</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-group label">كلمة المرور</label>
+      <input type="password" id="manageUserPassword" class="form-control" placeholder="أدخل كلمة المرور"
+        style="padding:10px 14px;border:1.5px solid var(--border);border-radius:12px;font-family:Cairo,sans-serif;width:100%;background:var(--surface2);">
+    </div>
+    <div class="form-group" style="margin-bottom:18px;">
+      <label>تأكيد كلمة المرور</label>
+      <input type="password" id="manageUserPasswordConfirm" class="form-control" placeholder="أعد إدخال كلمة المرور"
+        style="padding:10px 14px;border:1.5px solid var(--border);border-radius:12px;font-family:Cairo,sans-serif;width:100%;background:var(--surface2);">
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-outline" onclick="closeModal('manageUserModal')">إلغاء</button>
+      <button class="btn btn-navy" onclick="doSaveUser()">💾 حفظ المستخدم</button>
     </div>
   </div>
 </div>

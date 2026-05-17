@@ -162,6 +162,80 @@ function doChangePassword(){
   showToast(`✅ تم تغيير كلمة مرور ${users[username].name} بنجاح`,'success');
 }
 
+function showUserModal(username){
+  const users=getUsers();
+  const title=g('manageUserModalTitle');
+  const oldInp=g('manageUserOldUsername');
+  const userInp=g('manageUserUsername');
+  const nameInp=g('manageUserName');
+  const roleSel=g('manageUserRole');
+  const pwInp=g('manageUserPassword');
+  const pwConf=g('manageUserPasswordConfirm');
+  const isEdit=!!username && !!users[username];
+  if(isEdit){
+    const usr=users[username];
+    if(title)title.textContent='✏️ تعديل المستخدم';
+    if(oldInp)oldInp.value=username;
+    if(userInp)userInp.value=username;
+    if(nameInp)nameInp.value=usr.name||'';
+    if(roleSel)roleSel.value=usr.role||'user';
+  }else{
+    if(title)title.textContent='➕ إنشاء مستخدم جديد';
+    if(oldInp)oldInp.value='';
+    if(userInp)userInp.value='';
+    if(nameInp)nameInp.value='';
+    if(roleSel)roleSel.value='user';
+  }
+  if(pwInp)pwInp.value='';
+  if(pwConf)pwConf.value='';
+  openModal('manageUserModal');
+}
+
+function doSaveUser(){
+  const oldUsername=g('manageUserOldUsername')?.value.trim();
+  const username=g('manageUserUsername')?.value.trim();
+  const name=g('manageUserName')?.value.trim();
+  const role=g('manageUserRole')?.value||'user';
+  const newPw=g('manageUserPassword')?.value||'';
+  const confirm=g('manageUserPasswordConfirm')?.value||'';
+  if(!username){showToast('⚠️ أدخل اسم المستخدم','warning');return;}
+  if(!name){showToast('⚠️ أدخل اسم العرض','warning');return;}
+  const users=getUsers();
+  const editing=!!oldUsername;
+  if(editing && !users[oldUsername]){showToast('⚠️ المستخدم غير موجود','warning');return;}
+  if(oldUsername!==username && users[username]){showToast('⚠️ اسم المستخدم موجود بالفعل','warning');return;}
+  if(newPw){
+    if(newPw.length<6){showToast('⚠️ كلمة المرور يجب أن تكون 6 أحرف على الأقل','warning');return;}
+    if(newPw!==confirm){showToast('⚠️ كلمات المرور غير متطابقة','warning');return;}
+  }
+  let updated;
+  if(editing){
+    updated={...users[oldUsername],name,role};
+    if(newPw)updated.password=newPw;
+    if(oldUsername!==username){delete users[oldUsername];}
+    users[username]=updated;
+  }else{
+    if(newPw.length<6){showToast('⚠️ كلمة المرور يجب أن تكون 6 أحرف على الأقل','warning');return;}
+    if(newPw!==confirm){showToast('⚠️ كلمات المرور غير متطابقة','warning');return;}
+    users[username]={password:newPw,role,name};
+  }
+  saveUsers(users);
+  if(currentUser && currentUser.username===oldUsername){
+    currentUser.username=username;
+    currentUser.name=name;
+    currentUser.role=role;
+    setSession(currentUser);
+    const un=g('userNameDisplay');
+    const ur=g('userRoleDisplay');
+    if(un)un.textContent=currentUser.name;
+    if(ur)ur.textContent=currentUser.role==='admin'?'👑 مدير':'👤 مستخدم';
+  }
+  closeModal('manageUserModal');
+  renderSettings();
+  showToast(editing ? '✅ تم تحديث المستخدم بنجاح' : '✅ تم إنشاء المستخدم بنجاح','success');
+  logActivity(editing ? 'تعديل مستخدم' : 'إضافة مستخدم', `@${username} (${role})`);
+}
+
 // ═══════════════════════════════════════════
 // ACTIVITY LOG SYSTEM – سجل النشاط
 // ═══════════════════════════════════════════
@@ -276,6 +350,7 @@ function renderSettings(){
         <div class="suc-role">${udata.role==='admin'?'👑 مدير النظام':'👤 مستخدم'} — @${uname}</div>
       </div>
       <div class="suc-actions">
+        <button class="btn btn-outline btn-sm" onclick="showUserModal('${uname}')">✏️ تعديل</button>
         <button class="btn btn-outline btn-sm" onclick="showChangePwModal('${uname}')">🔑 تغيير كلمة المرور</button>
       </div>
     </div>`).join('');
@@ -2194,7 +2269,7 @@ initAuth();
 // Expose commonly used functions to `window` for inline HTML handlers
 (() => {
   const names = [
-    'doLogin','loginKeyPress','logout','toggleDataMenu','goDataSub','toggleArchiveMenu','goArchiveSub','toggleUserDropdown','showMyPwModal','toggleDark','requestNotifPermission','goPage','showClientStatement','applyFilter','clearFilter','applyExpFilter','clearExpFilter','openAddExpModal','exportSheetExcel','exportFullExcelReport','exportFullPDFReport','exportJSON','g','exportFiltered','addInstRow','closeModal','saveRevRecord','saveExpRecord','closeInstModal','saveEdit','printClientStatement','settingsToggleDark','settingsBackup','settingsRestore','settingsClearAllData','doChangePassword','selectRevType','setContractType','setManualInstCount','setMaqInst','selectRevType'
+    'doLogin','loginKeyPress','logout','toggleDataMenu','goDataSub','toggleArchiveMenu','goArchiveSub','toggleUserDropdown','showMyPwModal','showUserModal','doSaveUser','toggleDark','requestNotifPermission','goPage','showClientStatement','applyFilter','clearFilter','applyExpFilter','clearExpFilter','openAddExpModal','exportSheetExcel','exportFullExcelReport','exportFullPDFReport','exportJSON','g','exportFiltered','addInstRow','closeModal','saveRevRecord','saveExpRecord','closeInstModal','saveEdit','printClientStatement','settingsToggleDark','settingsBackup','settingsRestore','settingsClearAllData','doChangePassword','selectRevType','setContractType','setManualInstCount','setMaqInst','selectRevType'
   ];
   names.forEach(n=>{
     try{
