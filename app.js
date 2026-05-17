@@ -100,6 +100,15 @@ function showApp(){
 }
 function initAuth(){
   const session=getSession();
+  // Attach login event listeners (works when app.js is loaded as module)
+  try{
+    const lu=document.getElementById('loginUsername');
+    const lp=document.getElementById('loginPassword');
+    const lb=document.querySelector('.login-btn');
+    if(lu) lu.addEventListener('keypress', loginKeyPress);
+    if(lp) lp.addEventListener('keypress', loginKeyPress);
+    if(lb) lb.addEventListener('click', doLogin);
+  }catch(e){}
   if(session){
     currentUser=session;
     showApp();
