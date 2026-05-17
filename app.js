@@ -1824,7 +1824,7 @@ const FIREBASE_ENV = (() => {
   }
 })();
 
-const FIREBASE_CONFIG = {
+const FIREBASE_CONFIG = window.FIREBASE_CONFIG || {
   apiKey:            FIREBASE_ENV.VITE_FIREBASE_API_KEY || "تم حذف المفتاح القديم",
   authDomain:        FIREBASE_ENV.VITE_FIREBASE_AUTH_DOMAIN || "almuhhet-accounting.firebaseapp.com",
   projectId:         FIREBASE_ENV.VITE_FIREBASE_PROJECT_ID || "almuhhet-accounting",
@@ -1837,14 +1837,26 @@ const FB_FILES_DOC = "almuheet/files";   // مسار ملفات الأرشيف
 let   fbReady = false;
 let   fbDB    = null;
 
+function isFirebaseConfigIncomplete(config){
+  const bad = [config.apiKey, config.authDomain, config.projectId, config.storageBucket, config.messagingSenderId, config.appId];
+  return bad.some(v => !v || v.toString().includes('تم حذف') || v.toString().includes('your_'));
+}
+
 function initFirebase(){
   try{
+    if(isFirebaseConfigIncomplete(FIREBASE_CONFIG)){
+      console.error('Firebase configuration is incomplete. Add the real Firebase config to app.js or set window.FIREBASE_CONFIG before app.js loads.');
+      showSyncBadge('⚠️ Firebase config غير مكتمل','#ef4444');
+      fbReady=false;
+      return;
+    }
     if(!firebase?.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
     fbDB   = firebase.firestore();
     fbReady= true;
     showSyncBadge('🔥 Firebase متصل','#10b981');
   }catch(e){
     fbReady=false;
+    console.error('Firebase init error:',e);
     showSyncBadge('💾 تخزين محلي فقط','#f59e0b');
   }
 }
