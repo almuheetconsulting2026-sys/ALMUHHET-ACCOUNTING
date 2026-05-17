@@ -1,4 +1,363 @@
 // ═══════════════════════════════════════════
+// AUTHENTICATION & USERS SYSTEM
+// ═══════════════════════════════════════════
+const AUTH_KEY   = 'ALMUHHET_SESSION';
+const USERS_KEY  = 'ALMUHHET_USERS';
+const FB_USERS_DOC = 'almuheet/users';
+const FB_ACTIVITY_COL = 'almuheet_activity';
+
+// ── قراءة المستخدمين من localStorage أو defaults ──
+function getUsers(){
+  try{
+    const s=localStorage.getItem(USERS_KEY);
+    if(s)return JSON.parse(s);
+  }catch(e){}
+  return getDefaultUsers();
+}
+function getDefaultUsers(){
+  return {
+    admin:{password:'Admin@2025',role:'admin',name:'مدير النظام'},
+    user1:{password:'User@2025', role:'user', name:'المستخدم'}
+  };
+}
+
+// ── حفظ المستخدمين محلياً وسحابياً ──
+function saveUsers(u){
+  localStorage.setItem(USERS_KEY,JSON.stringify(u));
+  // حفظ سحابي
+  if(typeof fbDB!=='undefined'&&fbDB&&typeof fbReady!=='undefined'&&fbReady){
+    fbDB.doc(FB_USERS_DOC).set({users:JSON.stringify(u),updated:Date.now()}).catch(e=>console.warn('Users save error:',e));
+  }
+}
+
+// ── تحميل المستخدمين من Firebase ──
+async function loadUsersFromCloud(){
+  if(!fbReady||!fbDB)return;
+  try{
+    const snap=await fbDB.doc(FB_USERS_DOC).get();
+    if(snap.exists){
+      const users=JSON.parse(snap.data().users||'{}');
+      if(Object.keys(users).length>0){
+        localStorage.setItem(USERS_KEY,JSON.stringify(users));
+      }
+    }
+  }catch(e){ console.warn('Users load error:',e); }
+}
+
+let currentUser=null;
+
+function getSession(){
+  try{const s=localStorage.getItem(AUTH_KEY);return s?JSON.parse(s):null;}catch(e){return null;}
+}
+function setSession(u){
+  localStorage.setItem(AUTH_KEY,JSON.stringify(u));
+  currentUser=u;
+}
+function clearSession(){
+  localStorage.removeItem(AUTH_KEY);
+  currentUser=null;
+}
+function doLogin(){
+  const uname=(document.getElementById('loginUsername').value||'').trim();
+  const pw=document.getElementById('loginPassword').value||'';
+  const users=getUsers();
+  const user=users[uname];
+  if(!user||user.password!==pw){
+    const err=document.getElementById('loginError');
+    if(err){err.style.display='block';setTimeout(()=>{err.style.display='none';},3000);}
+    return;
+  }
+  setSession({username:uname,role:user.role,name:user.name});
+  showApp();
+  init();
+}
+function loginKeyPress(e){if(e.key==='Enter')doLogin();}
+function logout(){clearSession();location.reload();}
+function isAdmin(){return currentUser&&currentUser.role==='admin';}
+function canDeleteArchive(){return isAdmin();}
+
+function showLogin(){
+  const ls=document.getElementById('loginScreen');
+  const ar=document.getElementById('appRoot');
+  if(ls)ls.style.display='flex';
+  if(ar)ar.style.display='none';
+}
+function showApp(){
+  const ls=document.getElementById('loginScreen');
+  const ar=document.getElementById('appRoot');
+  if(ls)ls.style.display='none';
+  if(ar)ar.style.display='flex';
+  const un=document.getElementById('userNameDisplay');
+  const ur=document.getElementById('userRoleDisplay');
+  if(un&&currentUser)un.textContent=currentUser.name;
+  if(ur&&currentUser)ur.textContent=currentUser.role==='admin'?'👑 مدير':'👤 مستخدم';
+  const udn=document.getElementById('udName');
+  const udr=document.getElementById('udRole');
+  if(udn&&currentUser)udn.textContent=currentUser.name;
+  if(udr&&currentUser)udr.textContent=currentUser.role==='admin'?'👑 مدير النظام':'👤 مستخدم';
+  const sn=document.getElementById('settingsNavItem');
+  if(sn)sn.style.display=isAdmin()?'flex':'none';
+}
+function initAuth(){
+  const session=getSession();
+  if(session){
+    currentUser=session;
+    showApp();
+    init();
+  }else{
+    showLogin();
+  }
+}
+function toggleUserDropdown(){
+  const d=document.getElementById('userDropdown');
+  if(d)d.classList.toggle('show');
+}
+document.addEventListener('click',function(e){
+  const wrap=document.getElementById('userDropdownWrap');
+  if(wrap&&!wrap.contains(e.target)){
+    const d=document.getElementById('userDropdown');
+    if(d)d.classList.remove('show');
+  }
+});
+
+// ═══════════════════════════════════════════
+// PASSWORD CHANGE
+// ═══════════════════════════════════════════
+function showChangePwModal(username){
+  const users=getUsers();
+  const lbl=document.getElementById('changePwUserLabel');
+  const uInp=document.getElementById('changePwUsername');
+  if(lbl)lbl.textContent=users[username]?.name||username;
+  if(uInp)uInp.value=username;
+  const pn=document.getElementById('changePwNew');
+  const pc=document.getElementById('changePwConfirm');
+  if(pn)pn.value='';if(pc)pc.value='';
+  openModal('changePwModal');
+}
+function showMyPwModal(){
+  if(!currentUser)return;
+  toggleUserDropdown();
+  showChangePwModal(currentUser.username);
+}
+function doChangePassword(){
+  const username=document.getElementById('changePwUsername')?.value;
+  const newPw=document.getElementById('changePwNew')?.value||'';
+  const confirm=document.getElementById('changePwConfirm')?.value||'';
+  if(newPw.length<6){showToast('⚠️ كلمة المرور يجب أن تكون 6 أحرف على الأقل','warning');return;}
+  if(newPw!==confirm){showToast('⚠️ كلمات المرور غير متطابقة','warning');return;}
+  const users=getUsers();
+  if(!users[username]){showToast('⚠️ المستخدم غير موجود','warning');return;}
+  users[username].password=newPw;
+  saveUsers(users);
+  closeModal('changePwModal');
+  showToast(`✅ تم تغيير كلمة مرور ${users[username].name} بنجاح`,'success');
+}
+
+// ═══════════════════════════════════════════
+// ACTIVITY LOG SYSTEM – سجل النشاط
+// ═══════════════════════════════════════════
+async function logActivity(action, details){
+  if(!fbReady||!fbDB||!currentUser)return;
+  try{
+    const entry={
+      user: currentUser.username,
+      userName: currentUser.name,
+      role: currentUser.role,
+      action,
+      details,
+      timestamp: Date.now(),
+      date: new Date().toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'})
+    };
+    await fbDB.collection(FB_ACTIVITY_COL).add(entry);
+  }catch(e){ console.warn('Activity log error:',e); }
+}
+
+async function loadActivityLog(limit=100){
+  if(!fbReady||!fbDB)return[];
+  try{
+    const snap=await fbDB.collection(FB_ACTIVITY_COL)
+      .orderBy('timestamp','desc')
+      .limit(limit)
+      .get();
+    return snap.docs.map(d=>({id:d.id,...d.data()}));
+  }catch(e){ console.warn('Activity load error:',e); return[]; }
+}
+
+async function clearActivityLog(){
+  if(!fbReady||!fbDB)return;
+  try{
+    const snap=await fbDB.collection(FB_ACTIVITY_COL).get();
+    const batch=fbDB.batch();
+    snap.docs.forEach(d=>batch.delete(d.ref));
+    await batch.commit();
+  }catch(e){ console.warn('Clear activity error:',e); }
+}
+
+function actionIcon(action){
+  if(action.includes('إضافة'))return'➕';
+  if(action.includes('تعديل'))return'✏️';
+  if(action.includes('حذف'))return'🗑️';
+  if(action.includes('دخول'))return'🔐';
+  if(action.includes('خروج'))return'🚪';
+  if(action.includes('مستخدم'))return'👤';
+  if(action.includes('كلمة مرور'))return'🔑';
+  return'📋';
+}
+function actionColor(action){
+  if(action.includes('إضافة'))return'#10b981';
+  if(action.includes('تعديل'))return'#3b82f6';
+  if(action.includes('حذف'))return'#ef4444';
+  if(action.includes('دخول'))return'#8b5cf6';
+  return'#6b7280';
+}
+
+async function renderActivityLog(){
+  const container=document.getElementById('activityLogContainer');
+  if(!container)return;
+  container.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);">⏳ جاري التحميل...</div>';
+  const logs=await loadActivityLog(200);
+  if(!logs.length){
+    container.innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);">📭 لا توجد سجلات نشاط بعد</div>';
+    return;
+  }
+  const filterUser=document.getElementById('activityFilterUser')?.value||'';
+  const filterAction=document.getElementById('activityFilterAction')?.value||'';
+  const filtered=logs.filter(l=>{
+    if(filterUser&&l.user!==filterUser)return false;
+    if(filterAction&&!l.action.includes(filterAction))return false;
+    return true;
+  });
+  // Count badge
+  const badge=document.getElementById('activityCountBadge');
+  if(badge)badge.textContent=filtered.length+' سجل';
+
+  container.innerHTML=filtered.map(l=>`
+    <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:12px;margin-bottom:8px;border-right:3px solid ${actionColor(l.action)};">
+      <div style="font-size:1.3rem;margin-top:2px;">${actionIcon(l.action)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-weight:700;font-size:.85rem;color:var(--navy);">${l.userName||l.user}</span>
+          <span style="font-size:.7rem;background:${actionColor(l.action)}22;color:${actionColor(l.action)};padding:2px 8px;border-radius:20px;font-weight:600;">${l.action}</span>
+          <span style="font-size:.7rem;color:var(--muted);margin-right:auto;">${l.date}</span>
+        </div>
+        <div style="font-size:.78rem;color:var(--text);margin-top:4px;opacity:.85;">${l.details||''}</div>
+      </div>
+    </div>`).join('');
+}
+
+// ── بناء قائمة المستخدمين لفلتر سجل النشاط ──
+function buildActivityUserFilter(){
+  const sel=document.getElementById('activityFilterUser');
+  if(!sel)return;
+  const users=getUsers();
+  sel.innerHTML='<option value="">👥 كل المستخدمين</option>'+
+    Object.entries(users).map(([u,d])=>`<option value="${u}">${d.name} (@${u})</option>`).join('');
+}
+
+// ═══════════════════════════════════════════
+// SETTINGS PAGE
+// ═══════════════════════════════════════════
+function renderSettings(){
+  if(!isAdmin()){showToast('⛔ ليس لديك صلاحية','danger');goPage('dashboard');return;}
+  const users=getUsers();
+  const usersHtml=Object.entries(users).map(([uname,udata])=>`
+    <div class="settings-user-card">
+      <div class="suc-info">
+        <div class="suc-name">${udata.name}</div>
+        <div class="suc-role">${udata.role==='admin'?'👑 مدير النظام':'👤 مستخدم'} — @${uname}</div>
+      </div>
+      <div class="suc-actions">
+        <button class="btn btn-outline btn-sm" onclick="showChangePwModal('${uname}')">🔑 تغيير كلمة المرور</button>
+      </div>
+    </div>`).join('');
+  const sc=document.getElementById('settingsUsersContainer');
+  if(sc)sc.innerHTML=usersHtml;
+  const fb=document.getElementById('settingsFbStatus');
+  if(fb)fb.innerHTML=fbReady?'<span class="sir-val green">🟢 متصل بـ Firebase</span>':'<span class="sir-val red">🔴 غير متصل – تخزين محلي</span>';
+  const isDark=document.body.classList.contains('dark-mode');
+  const dt=document.getElementById('settingsDarkBtn');
+  if(dt)dt.textContent=isDark?'☀️ تفعيل الوضع الفاتح':'🌙 تفعيل الوضع الداكن';
+  const totalRows=sheetNames.reduce((a,n)=>a+(SD[n]?.rows?.length||0),0);
+  const si=document.getElementById('settingsTotalRows');
+  if(si)si.textContent=totalRows+' سجل';
+  const su=document.getElementById('settingsUsersCount');
+  if(su)su.textContent=Object.keys(users).length+' مستخدم';
+  const sv=document.getElementById('settingsVersion');
+  if(sv)sv.textContent='v2.0 – 2026';
+  const scu=document.getElementById('settingsCurrentUser');
+  if(scu&&currentUser)scu.textContent=currentUser.name+' (@'+currentUser.username+')';
+  const su2=document.getElementById('settingsUsersCount2');
+  if(su2)su2.textContent=Object.keys(users).length+' مستخدم';
+}
+
+function settingsToggleDark(){toggleDark();renderSettings();}
+
+function settingsBackup(){
+  const data={SD,users:getUsers(),exportDate:new Date().toISOString(),version:'2.0'};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`almuhhet_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  showToast('✅ تم تنزيل النسخة الاحتياطية','success');
+}
+
+function settingsRestore(){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='.json';
+  inp.onchange=async(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    try{
+      const text=await file.text();
+      const data=JSON.parse(text);
+      if(data.SD){
+        Object.assign(SD,data.SD);
+        if(data.users)saveUsers(data.users);
+        await saveToStorage();
+        showToast('✅ تم استعادة البيانات بنجاح','success');
+        renderDash();renderSettings();
+      }else{showToast('⚠️ ملف النسخة الاحتياطية غير صالح','warning');}
+    }catch(err){showToast('⚠️ خطأ في قراءة الملف','warning');}
+  };
+  inp.click();
+}
+
+function settingsClearAllData(){
+  if(!confirm('⚠️ هل أنت متأكد؟ سيتم حذف جميع البيانات نهائياً من السحابة والجهاز ولا يمكن التراجع!'))return;
+  if(!confirm('تأكيد نهائي: حذف كل البيانات من Firebase وكل الأجهزة؟'))return;
+  sheetNames.forEach(n=>{SD[n]={columns:SD[n]?.columns||[],rows:[]};});
+  FILE_STORE={};
+  // مسح السحابة
+  saveToStorage();
+  // مسح محلي شامل
+  try{
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(FILE_STORE_KEY);
+  }catch(e){}
+  renderDash();
+  showToast('🗑️ تم مسح جميع البيانات من السحابة والجهاز','danger');
+}
+
+// Archive file delete (admin only)
+function deleteArchiveFile(fileId,sub){
+  if(!canDeleteArchive()){showToast('⛔ لا تملك صلاحية حذف ملفات الأرشيف','danger');return;}
+  if(!confirm('حذف هذا الملف من الأرشيف نهائياً؟'))return;
+  if(fileStore[fileId])delete fileStore[fileId];
+  // Remove from row references
+  sheetNames.forEach(sn=>{
+    SD[sn]?.rows?.forEach(r=>{
+      Object.keys(r).forEach(k=>{if(r[k]===fileId)r[k]='';});
+    });
+  });
+  saveFileStore();
+  saveToStorage();
+  showToast('🗑️ تم حذف الملف','success');
+  if(sub==='contracts')renderArchContracts();
+  else if(sub==='receipts')renderArchReceipts();
+  else if(sub==='payments')renderArchPayments();
+}
+
+// ═══════════════════════════════════════════
 // DATA DEFINITIONS
 // ═══════════════════════════════════════════
 function instCols(n){let c=[];for(let i=1;i<=n;i++)c.push(`تاريخ قسط ${i}`,`مبلغ قسط ${i}`);return c;}
@@ -22,7 +381,7 @@ const supCols=[
 const expCols=["م","التاريخ","البيان","تصنيف المصروف","رقم سند الصرف","المبلغ","طريقة الصرف","المستفيد","رقم الجوال","الرقم الشخصي"];
 const sheetNames=["ترحيل البيانات","الايرادات التصميم الداخلي","الايرادات اخرى بنك التنمية","الايرادات اخرى","الايرادات التصميم","الايرادات الاشراف","المصاريف"];
 const revSheets=sheetNames.filter(n=>n!=="ترحيل البيانات"&&n!=="المصاريف");
-const pageNames={dashboard:"لوحة التحكم",data:"إدارة البيانات",reports:"التقارير الشاملة",alerts:"التنبيهات",export:"تصدير البيانات",archive:"الأرشيف"};
+const pageNames={dashboard:"لوحة التحكم",data:"إدارة البيانات",reports:"التقارير الشاملة",alerts:"التنبيهات",export:"تصدير البيانات",archive:"الأرشيف",settings:"⚙️ الإعدادات"};
 
 // ═══════════════════════════════════════════
 // STATE
@@ -243,7 +602,7 @@ function printArchiveSub(sub){
   ${files.length===0?'<p style="text-align:center;padding:30px;color:#94a3b8;">لا توجد ملفات في هذا الأرشيف</p>':`
   <table><thead><tr><th>#</th><th>معاينة</th><th>اسم الملف</th><th>النوع</th><th>العميل / البيان</th><th>رقم المشروع</th><th>التاريخ</th></tr></thead>
   <tbody>${rows}</tbody></table>`}
-  <div class="footer">© 2025 المحيط للاستشارات الهندسية</div>
+  <div class="footer">© 2026 المحيط للاستشارات الهندسية – جميع الحقوق محفوظة</div>
   <script>window.onload=function(){window.print();}<\/script></body></html>`);
   w.document.close();
 }
@@ -288,6 +647,7 @@ function makeArchCard(fileId,fname,label,client,proj,date,sheet){
     <div class="arch-actions">
       <button class="arch-btn arch-btn-view" onclick="viewFile('${fileId}')">👁️ عرض</button>
       <button class="arch-btn arch-btn-dl" onclick="downloadFile('${fileId}')">⬇️ تحميل</button>
+      ${canDeleteArchive()?`<button class="arch-btn arch-btn-del" onclick="deleteArchiveFile('${fileId}','${sub}')">🗑️ حذف</button>`:''}
     </div>
   </div>`;
 }
@@ -345,44 +705,13 @@ function renderArchivePayments(){
 }
 
 // ═══════════════════════════════════════════
-// SAMPLE DATA
+// INITIAL DATA (empty – no sample records)
 // ═══════════════════════════════════════════
 function initData(){
+  // تهيئة الأوراق بدون بيانات تجريبية – النظام يبدأ فارغاً
   SD["ترحيل البيانات"]={columns:masterCols,rows:[]};
   sheetNames.slice(1).forEach(n=>SD[n]={columns:getSheetCols(n),rows:[]});
-
-  SD["الايرادات التصميم الداخلي"].rows=[
-    {م:1,"اسم العميل":"شركة زين للاستثمار","رقم الجوال":"059999888","رقم المشروع":"DES-01","البيان":"تصميم داخلي مجمع تجاري","تاريخ السند":"2025-01-15","رقم السند":"R-22","مبلغ المشروع":50000,"مبلغ الدفعة الاولى":20000,"تاريخ الدفعة الاولى":"2025-01-15","طريقة الدفع":"شيك","تاريخ قسط 1":"2025-02-15","مبلغ قسط 1":15000,"تاريخ قسط 2":"2025-03-15","مبلغ قسط 2":15000,"تاريخ قسط 3":"","مبلغ قسط 3":""},
-    {م:2,"اسم العميل":"مجموعة النخبة","رقم الجوال":"0556667788","رقم المشروع":"DES-02","البيان":"تصميم فيلا فاخرة","تاريخ السند":"2025-03-01","رقم السند":"R-45","مبلغ المشروع":85000,"مبلغ الدفعة الاولى":40000,"تاريخ الدفعة الاولى":"2025-03-01","طريقة الدفع":"حوالة","تاريخ قسط 1":"2025-04-01","مبلغ قسط 1":22500,"تاريخ قسط 2":"2025-05-01","مبلغ قسط 2":22500,"تاريخ قسط 3":"","مبلغ قسط 3":""},
-    {م:3,"اسم العميل":"شركة الأفق","رقم الجوال":"0534455667","رقم المشروع":"DES-03","البيان":"تصميم مكاتب إدارية","تاريخ السند":"2025-04-10","رقم السند":"R-67","مبلغ المشروع":35000,"مبلغ الدفعة الاولى":15000,"تاريخ الدفعة الاولى":"2025-04-10","طريقة الدفع":"نقدا","تاريخ قسط 1":"2025-05-10","مبلغ قسط 1":20000,"تاريخ قسط 2":"","مبلغ قسط 2":"","تاريخ قسط 3":"","مبلغ قسط 3":""}
-  ];
-  const si1=genInst("2025-02-01",180000,30000);
-  const si2=genInst("2025-01-15",240000,50000);
-  SD["الايرادات الاشراف"].rows=[
-    (()=>{const r={م:1,"اسم العميل":"شركة الإشراف العربية","رقم الجوال":"051111222","رقم المشروع":"SUP-001","البيان":"إشراف برج سكني","تاريخ السند":"2025-02-01","رقم السند":"SN-100","مبلغ المشروع":180000,"مبلغ الدفعة الاولى":30000,"تاريخ الدفعة الاولى":"2025-02-01","طريقة الدفع":"حوالة"};si1.forEach((x,i)=>{r[`تاريخ قسط ${i+1}`]=x.date;r[`مبلغ قسط ${i+1}`]=x.amount;});return r;})(),
-    (()=>{const r={م:2,"اسم العميل":"مجموعة النور العقارية","رقم الجوال":"0503344556","رقم المشروع":"SUP-002","البيان":"إشراف مجمع سكني","تاريخ السند":"2025-01-15","رقم السند":"SN-101","مبلغ المشروع":240000,"مبلغ الدفعة الاولى":50000,"تاريخ الدفعة الاولى":"2025-01-15","طريقة الدفع":"شيك"};si2.forEach((x,i)=>{r[`تاريخ قسط ${i+1}`]=x.date;r[`مبلغ قسط ${i+1}`]=x.amount;});return r;})()
-  ];
-  SD["الايرادات التصميم"].rows=[
-    {م:1,"اسم العميل":"استوديو الإبداع","رقم الجوال":"0527788990","رقم المشروع":"GFX-01","البيان":"هوية بصرية","تاريخ السند":"2025-02-20","رقم السند":"G-11","مبلغ المشروع":18000,"مبلغ الدفعة الاولى":9000,"تاريخ الدفعة الاولى":"2025-02-20","طريقة الدفع":"نقدا","تاريخ قسط 1":"2025-03-20","مبلغ قسط 1":9000,"تاريخ قسط 2":"","مبلغ قسط 2":"","تاريخ قسط 3":"","مبلغ قسط 3":""},
-    {م:2,"اسم العميل":"شركة البناء الحديث","رقم الجوال":"0511223344","رقم المشروع":"GFX-02","البيان":"موقع إلكتروني","تاريخ السند":"2025-04-05","رقم السند":"G-22","مبلغ المشروع":12000,"مبلغ الدفعة الاولى":12000,"تاريخ الدفعة الاولى":"2025-04-05","طريقة الدفع":"حوالة","تاريخ قسط 1":"","مبلغ قسط 1":"","تاريخ قسط 2":"","مبلغ قسط 2":"","تاريخ قسط 3":"","مبلغ قسط 3":""}
-  ];
-  SD["الايرادات اخرى بنك التنمية"].rows=[
-    {م:1,"اسم العميل":"منصور العتيبي","رقم الجوال":"0566778899","رقم المشروع":"BNK-01","البيان":"استشارات تمويل","تاريخ السند":"2025-03-15","رقم السند":"B-001","مبلغ المشروع":25000,"مبلغ الدفعة الاولى":25000,"تاريخ الدفعة الاولى":"2025-03-15","طريقة الدفع":"تحويل","تاريخ قسط 1":"","مبلغ قسط 1":"","تاريخ قسط 2":"","مبلغ قسط 2":"","تاريخ قسط 3":"","مبلغ قسط 3":""}
-  ];
-  SD["الايرادات اخرى"].rows=[
-    {م:1,"اسم العميل":"محمد الشهري","رقم الجوال":"0544556677","رقم المشروع":"OTH-01","البيان":"خدمات استشارية","تاريخ السند":"2025-05-01","رقم السند":"O-001","مبلغ المشروع":8000,"مبلغ الدفعة الاولى":8000,"تاريخ الدفعة الاولى":"2025-05-01","طريقة الدفع":"نقدا","تاريخ قسط 1":"","مبلغ قسط 1":"","تاريخ قسط 2":"","مبلغ قسط 2":"","تاريخ قسط 3":"","مبلغ قسط 3":""}
-  ];
-  SD["المصاريف"].rows=[
-    {م:1,"التاريخ":"2025-01-01","البيان":"رواتب يناير","تصنيف المصروف":"رواتب","رقم سند الصرف":"S-01","المبلغ":25000,"طريقة الصرف":"تحويل بنكي","المستفيد":"","رقم الجوال":"","الرقم الشخصي":""},
-    {م:2,"التاريخ":"2025-02-01","البيان":"رواتب فبراير","تصنيف المصروف":"رواتب","رقم سند الصرف":"S-02","المبلغ":25000,"طريقة الصرف":"تحويل بنكي","المستفيد":"","رقم الجوال":"","الرقم الشخصي":""},
-    {م:3,"التاريخ":"2025-03-01","البيان":"رواتب مارس","تصنيف المصروف":"رواتب","رقم سند الصرف":"S-03","المبلغ":25000,"طريقة الصرف":"تحويل بنكي","المستفيد":"","رقم الجوال":"","الرقم الشخصي":""},
-    {م:4,"التاريخ":"2025-04-01","البيان":"رواتب أبريل","تصنيف المصروف":"رواتب","رقم سند الصرف":"S-09","المبلغ":25000,"طريقة الصرف":"تحويل بنكي","المستفيد":"","رقم الجوال":"","الرقم الشخصي":""},
-    {م:5,"التاريخ":"2025-01-05","البيان":"إيجار المكتب","تصنيف المصروف":"ايجار","رقم سند الصرف":"S-04","المبلغ":8000,"طريقة الصرف":"شيك","المستفيد":"","رقم الجوال":"","الرقم الشخصي":""},
-    {م:6,"التاريخ":"2025-02-05","البيان":"إيجار المكتب","تصنيف المصروف":"ايجار","رقم سند الصرف":"S-05","المبلغ":8000,"طريقة الصرف":"شيك","المستفيد":"","رقم الجوال":"","الرقم الشخصي":""},
-    {م:7,"التاريخ":"2025-03-10","البيان":"فواتير كهرباء","تصنيف المصروف":"كهرباء ومياه","رقم سند الصرف":"S-06","المبلغ":3200,"طريقة الصرف":"تحويل بنكي","المستفيد":"","رقم الجوال":"","الرقم الشخصي":""},
-    {م:8,"التاريخ":"2025-01-20","البيان":"نثريات مكتبية","تصنيف المصروف":"نثريات","رقم سند الصرف":"S-07","المبلغ":1500,"طريقة الصرف":"نقدي","المستفيد":"","رقم الجوال":"","الرقم الشخصي":""},
-    {م:9,"التاريخ":"2025-02-15","البيان":"هواتف وانترنت","تصنيف المصروف":"هواتف","رقم سند الصرف":"S-08","المبلغ":2400,"طريقة الصرف":"تحويل بنكي","المستفيد":"","رقم الجوال":"","الرقم الشخصي":""}
-  ];
+  // لا توجد بيانات مسبقة – كل البيانات تُدخل من المستخدم وتُحفظ سحابياً في Firebase
 }
 
 // ═══════════════════════════════════════════
@@ -501,6 +830,7 @@ function goPage(id){
   else if(id==='reports')renderReports();
   else if(id==='alerts')renderAlerts();
   else if(id==='export')renderExport();
+  else if(id==='settings')renderSettings();
   else if(id==='archive'){
     if(!currentArchSub){
       ['contracts','receipts','payments'].forEach(s=>{const el=g(`archsub-${s}`);if(el)el.style.display='none';});
@@ -1295,7 +1625,7 @@ function exportFullPDFReport(){
   <table><thead><tr><th>العميل</th><th>المشروع</th><th>القسط</th><th>تاريخ الاستحقاق</th><th>المبلغ</th></tr></thead><tbody>
     ${ov.map(o=>`<tr><td>${o.client}</td><td>${o.proj}</td><td>القسط ${o.n}</td><td>${o.date}</td><td style="color:#ef4444;font-weight:700;">${fmt(o.amt)} ر.ق</td></tr>`).join('')}
   </tbody></table>`:''}
-  <div class="footer">© 2025 المحيط للحسابات – تقرير آلي شامل</div>
+  <div class="footer">© 2026 المحيط للحسابات – تقرير آلي شامل</div>
   <script>window.onload=function(){window.print();}<\/script>
   </body></html>`);
   w.document.close();
@@ -1409,7 +1739,7 @@ function exportPDF(){
   <table><thead><tr><th>العميل</th><th>المشروع</th><th>القسط</th><th>تاريخ الاستحقاق</th><th>المبلغ</th><th>الحالة</th></tr></thead><tbody>
     ${ov.map(o=>`<tr><td>${o.client}</td><td>${o.proj}</td><td>القسط ${o.n}</td><td>${o.date}</td><td>${fmt(o.amt)} ر.ق</td><td><span class="bdg-red">متأخر</span></td></tr>`).join('')}
   </tbody></table>`:''}
-  <div class="footer">© 2025 المحيط للحسابات – تقرير آلي</div>
+  <div class="footer">© 2026 المحيط للحسابات – تقرير آلي</div>
   <script>window.onload=function(){window.print();}<\/script>
   </body></html>`);
   w.document.close();
@@ -1513,32 +1843,37 @@ function showSyncBadge(msg,color){
   setTimeout(()=>b.style.opacity='0',3000);
 }
 
-/* ── حفظ البيانات ── */
+/* ── حفظ البيانات (Firebase أولاً – نسخة محلية احتياطية) ── */
 async function saveToStorage(){
-  // دائماً احفظ محلياً كنسخة احتياطية
-  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SD)); }catch(e){}
-
-  if(!fbReady) return;
-  try{
-    // حفظ البيانات (بدون ملفات base64 لتجنب الحجم الكبير)
-    const cleanSD = {};
-    sheetNames.forEach(n=>{
-      cleanSD[n]={
-        columns: SD[n]?.columns||[],
-        rows: (SD[n]?.rows||[]).map(r=>{
-          const clean={...r};
-          // احذف مراجع الملفات الكبيرة من Firestore (تُخزَّن محلياً)
-          Object.keys(clean).forEach(k=>{ if(k.startsWith('ملف_'))delete clean[k]; });
-          return clean;
-        })
-      };
-    });
-    await fbDB.doc(FB_DOC_PATH).set({data: JSON.stringify(cleanSD), updated: Date.now()});
-    showSyncBadge('☁️ تم الحفظ السحابي','#10b981');
-  }catch(e){
-    console.warn('Firebase save error:',e);
-    showSyncBadge('⚠️ فشل الحفظ السحابي – محفوظ محلياً','#f59e0b');
+  // Firebase هو المصدر الأساسي للبيانات السحابية
+  if(fbReady){
+    try{
+      const cleanSD = {};
+      sheetNames.forEach(n=>{
+        cleanSD[n]={
+          columns: SD[n]?.columns||[],
+          rows: (SD[n]?.rows||[]).map(r=>{
+            const clean={...r};
+            // لا نحفظ ملفات base64 الكبيرة في Firestore
+            Object.keys(clean).forEach(k=>{ if(k.startsWith('ملف_'))delete clean[k]; });
+            return clean;
+          })
+        };
+      });
+      await fbDB.doc(FB_DOC_PATH).set({data: JSON.stringify(cleanSD), updated: Date.now()});
+      showSyncBadge('☁️ تم الحفظ في السحابة','#10b981');
+      // نسخة احتياطية محلية بعد النجاح
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SD)); }catch(e){}
+      return;
+    }catch(e){
+      console.warn('Firebase save error:',e);
+      showSyncBadge('⚠️ فشل الحفظ السحابي – تحقق من الاتصال','#f59e0b');
+    }
+  } else {
+    showSyncBadge('🔴 Firebase غير متصل – الحفظ مؤقت محلياً فقط','#ef4444');
   }
+  // احتياطي: localStorage عند انقطاع الاتصال
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SD)); }catch(e){}
 }
 
 /* ── تحميل البيانات ── */
@@ -1811,6 +2146,8 @@ function init(){
   g('todayDate').textContent=today();
   initSearch();
   initFirebase();
+  // حفظ تلقائي كل 5 دقائق للتأكد من عدم ضياع البيانات
+  setInterval(()=>{ if(fbReady) saveToStorage(); }, 5*60*1000);
   loadFromStorage().then(hadSaved=>{
     renderDash();
     updateBadges();
@@ -1818,4 +2155,4 @@ function init(){
     if(!hadSaved) saveToStorage();
   });
 }
-init();
+initAuth();

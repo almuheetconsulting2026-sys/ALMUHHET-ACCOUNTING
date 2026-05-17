@@ -457,3 +457,100 @@ body.dark-mode .file-pill{background:var(--green-bg);border-color:rgba(16,185,12
 .arch-empty p{font-size:.88rem;}
 body.dark-mode .arch-card{background:var(--surface);border-color:var(--border);}
 body.dark-mode .arch-meta-tag{background:var(--surface2);border-color:var(--border);}
+
+/* ═══════════════════════════════════════════
+   LOGIN SCREEN
+═══════════════════════════════════════════ */
+#loginScreen {
+  position:fixed;inset:0;background:linear-gradient(135deg,#0b1e30 0%,#0d2745 50%,#071525 100%);
+  display:flex;align-items:center;justify-content:center;z-index:9999;
+}
+.login-box {
+  background:#fff;border-radius:28px;padding:44px 40px;width:100%;max-width:420px;
+  box-shadow:0 24px 80px rgba(0,0,0,.4);text-align:center;
+}
+body.dark-mode .login-box{background:#1a2636;color:var(--text);}
+.login-logo{margin-bottom:24px;}
+.login-logo-icon{width:72px;height:72px;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:20px;
+  display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 14px;box-shadow:0 8px 24px rgba(245,158,11,.35);}
+.login-logo h2{font-size:1.1rem;font-weight:900;color:#0d2137;margin-bottom:4px;}
+body.dark-mode .login-logo h2{color:#e2ecf5;}
+.login-logo p{font-size:.78rem;color:#64748b;}
+.login-box h3{font-size:1rem;font-weight:700;color:#0d2137;margin-bottom:22px;}
+body.dark-mode .login-box h3{color:#e2ecf5;}
+.login-field{margin-bottom:14px;text-align:right;}
+.login-field label{font-size:.75rem;font-weight:700;color:#64748b;display:block;margin-bottom:6px;}
+.login-field input{
+  width:100%;padding:11px 15px;border:1.5px solid #e2ecf5;border-radius:12px;
+  font-family:'Cairo',sans-serif;font-size:.88rem;background:#f7fafd;direction:rtl;
+  transition:all .2s;
+}
+body.dark-mode .login-field input{background:#1e2f42;border-color:#2a3d52;color:#e2ecf5;}
+.login-field input:focus{outline:none;border-color:#1e4976;background:#fff;box-shadow:0 0 0 3px rgba(30,73,118,.1);}
+.login-btn{
+  width:100%;padding:13px;background:linear-gradient(135deg,#0d2137,#1e4976);
+  color:#fff;border:none;border-radius:12px;font-family:'Cairo',sans-serif;
+  font-size:.92rem;font-weight:700;cursor:pointer;transition:all .2s;margin-top:6px;
+}
+.login-btn:hover{background:linear-gradient(135deg,#1e4976,#3b82f6);transform:translateY(-1px);}
+.login-error{
+  background:#fee2e2;color:#991b1b;border:1px solid rgba(239,68,68,.2);
+  border-radius:10px;padding:10px 14px;font-size:.8rem;margin-top:12px;display:none;
+}
+.login-footer{font-size:.68rem;color:#94a3b8;margin-top:18px;}
+
+/* ═══════════════════════════════════════════
+   TOPBAR USER INFO
+═══════════════════════════════════════════ */
+.topbar-user{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:40px;cursor:pointer;transition:all .2s;}
+.topbar-user:hover{background:var(--gold-bg);border-color:var(--gold);}
+.topbar-user-name{font-size:.78rem;font-weight:700;color:var(--navy);}
+.topbar-user-role{font-size:.65rem;color:var(--muted);}
+.user-dropdown{
+  position:absolute;top:calc(100% + 10px);left:0;min-width:200px;
+  background:#fff;border:1px solid var(--border);border-radius:16px;
+  box-shadow:var(--shl);z-index:300;overflow:hidden;display:none;
+}
+body.dark-mode .user-dropdown{background:var(--surface);}
+.user-dropdown.show{display:block;}
+.ud-header{padding:14px 16px;background:var(--navy);color:#fff;}
+.ud-header-name{font-size:.88rem;font-weight:700;}
+.ud-header-role{font-size:.7rem;opacity:.75;margin-top:2px;}
+.ud-item{padding:11px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.82rem;font-weight:600;transition:background .15s;border-bottom:1px solid var(--border);}
+.ud-item:last-child{border-bottom:none;}
+.ud-item:hover{background:var(--surface2);}
+.ud-item.danger{color:var(--red);}
+.ud-item.danger:hover{background:var(--red-bg);}
+.topbar-user-wrap{position:relative;}
+
+/* ═══════════════════════════════════════════
+   SETTINGS PAGE
+═══════════════════════════════════════════ */
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px;}
+.settings-card{background:var(--surface);border-radius:var(--rl);padding:22px;box-shadow:var(--sh);}
+.settings-card h3{font-size:.9rem;font-weight:700;color:var(--navy);margin-bottom:18px;display:flex;align-items:center;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.settings-user-card{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;background:var(--surface2);border-radius:14px;margin-bottom:10px;border:1px solid var(--border);}
+.suc-name{font-size:.88rem;font-weight:700;color:var(--navy);}
+.suc-role{font-size:.72rem;color:var(--muted);margin-top:3px;}
+.settings-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);}
+.settings-toggle-row:last-child{border-bottom:none;}
+.str-label{font-size:.84rem;font-weight:600;color:var(--text);}
+.str-sub{font-size:.71rem;color:var(--muted);margin-top:2px;}
+.toggle-switch{width:44px;height:24px;background:#cbd5e1;border-radius:40px;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;border:none;}
+.toggle-switch.on{background:var(--green);}
+.toggle-switch::after{content:'';position:absolute;top:3px;right:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.2);}
+.toggle-switch.on::after{transform:translateX(-20px);}
+.settings-info-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:.82rem;}
+.settings-info-row:last-child{border-bottom:none;}
+.sir-label{color:var(--muted);font-weight:600;}
+.sir-val{color:var(--text);font-weight:700;}
+.sir-val.green{color:var(--green);}
+.sir-val.red{color:var(--red);}
+
+/* Change Password Modal */
+.pw-modal-card{background:#fff;border-radius:24px;padding:28px;max-width:420px;width:95%;box-shadow:0 24px 64px rgba(0,0,0,.22);}
+body.dark-mode .pw-modal-card{background:var(--surface);}
+
+/* Archive Delete Button */
+.arch-btn-del{background:var(--red-bg)!important;color:var(--red)!important;border:1px solid rgba(239,68,68,.2)!important;}
+.arch-btn-del:hover{background:var(--red)!important;color:#fff!important;}
