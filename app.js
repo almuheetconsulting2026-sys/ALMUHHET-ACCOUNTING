@@ -2165,3 +2165,15 @@ function init(){
   });
 }
 initAuth();
+
+// Expose commonly used functions to `window` for inline HTML handlers
+(() => {
+  const names = [
+    'doLogin','loginKeyPress','logout','toggleDataMenu','goDataSub','toggleArchiveMenu','goArchiveSub','toggleUserDropdown','showMyPwModal','toggleDark','requestNotifPermission','goPage','showClientStatement','applyFilter','clearFilter','applyExpFilter','clearExpFilter','openAddExpModal','exportSheetExcel','exportFullExcelReport','exportFullPDFReport','exportJSON','g','exportFiltered','addInstRow','closeModal','saveRevRecord','saveExpRecord','closeInstModal','saveEdit','printClientStatement','settingsToggleDark','settingsBackup','settingsRestore','settingsClearAllData','doChangePassword','selectRevType','setContractType','setManualInstCount','setMaqInst','selectRevType'
+  ];
+  names.forEach(n=>{
+    try{
+      if(typeof window[n]==='undefined' && typeof eval(n)==='function') window[n]=eval(n);
+    }catch(e){}
+  });
+})();
