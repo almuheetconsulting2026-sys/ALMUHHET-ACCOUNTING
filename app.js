@@ -1804,15 +1804,17 @@ function loadDarkMode(){
 const STORAGE_KEY='almuheet_data_v2';
 
 // ═══════════════════════════════════════════
-// FIREBASE CONFIG  ← أدخل إعداداتك هنا
+// FIREBASE CONFIG - استخدم متغيرات البيئة
 // ═══════════════════════════════════════════
+// 🔒 أضف المفاتيح الجديدة في .env بدلاً من هنا
+// نسخة احتياطية: الملف .env.example يحتوي على النموذج
 const FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyDUwgRv35xC-Ppai5-urZvNPamKR8E8-CA",
-  authDomain:        "almuhhet-accounting.firebaseapp.com",
-  projectId:         "almuhhet-accounting",
-  storageBucket:     "almuhhet-accounting.firebasestorage.app",
-  messagingSenderId: "574319906803",
-  appId:             "1:574319906803:web:8c1c4941c11c3959bd4c86"
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY || "تم حذف المفتاح القديم",
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "almuhhet-accounting.firebaseapp.com",
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID || "almuhhet-accounting",
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "almuhhet-accounting.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "تم حذف المفتاح القديم",
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID || "تم حذف المفتاح القديم"
 };
 const FB_DOC_PATH = "almuheet/data";      // مسار المستند في Firestore
 const FB_FILES_DOC = "almuheet/files";   // مسار ملفات الأرشيف

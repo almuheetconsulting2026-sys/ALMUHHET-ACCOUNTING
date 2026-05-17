@@ -1,0 +1,10 @@
+{
+  "firebase": {
+    "apiKey": "استبدل هذا بالمفتاح الجديد من Firebase Console",
+    "authDomain": "almuhhet-accounting.firebaseapp.com",
+    "projectId": "almuhhet-accounting",
+    "storageBucket": "almuhhet-accounting.firebasestorage.app",
+    "messagingSenderId": "استبدل هذا بالمفتاح الجديد",
+    "appId": "استبدل هذا بالمفتاح الجديد"
+  }
+}
