@@ -2140,13 +2140,13 @@ function printClientStatement(){
 // ═══════════════════════════════════════════
 // EXPORT PAGE INIT (notify banner)
 // ═══════════════════════════════════════════
-const _origRenderExport=renderExport;
-function renderExport(){
+const _origRenderExport = renderExport;
+renderExport = function(){
   _origRenderExport();
-  const b=g('notifBanner');
-  if(b&&'Notification' in window&&Notification.permission==='default')b.style.display='flex';
-  else if(b)b.style.display='none';
-}
+  const b = g('notifBanner');
+  if (b && 'Notification' in window && Notification.permission === 'default') b.style.display = 'flex';
+  else if (b) b.style.display = 'none';
+};
 
 function init(){
   loadDarkMode();
