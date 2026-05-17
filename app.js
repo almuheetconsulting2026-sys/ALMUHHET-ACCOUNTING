@@ -1304,8 +1304,7 @@ function setType(t){recType=t;}
 function onRevTargetChange(){}
 function previewInst(){}
 function setMaqInst(n){g('maqInstFields').innerHTML='';instCounters.maq=0;for(let i=0;i<n;i++)addInstRow('maq');}
-function setManualInstCount(n){g('manualInstFields').innerHTML='';instCounters.mi=0;for(let i=0;i<n;i++)addInstRow('mi');}
-
+ 
 function openEdit(sn,idx){
   editSheet=sn;editIdx=idx;
   const sh=SD[sn];if(!sh)return;
