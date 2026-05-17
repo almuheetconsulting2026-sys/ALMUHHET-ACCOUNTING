@@ -1839,19 +1839,32 @@ function isFirebaseConfigIncomplete(config){
 function initFirebase(){
   try{
     if(isFirebaseConfigIncomplete(FIREBASE_CONFIG)){
-      console.error('Firebase configuration is incomplete. Add the real Firebase config to app.js or set window.FIREBASE_CONFIG before app.js loads.');
-      showSyncBadge('⚠️ Firebase config غير مكتمل','#ef4444');
       fbReady=false;
+      showSyncBadge('💾 تخزين محلي','#6b7280');
       return;
     }
     if(!firebase?.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
-    fbDB   = firebase.firestore();
-    fbReady= true;
-    showSyncBadge('🔥 Firebase متصل','#10b981');
+    fbDB = firebase.firestore();
+    // اختبار سريع للاتصال بـFirestore
+    fbDB.doc(FB_DOC_PATH).get().then(snap=>{
+      fbReady=true;
+      showSyncBadge('☁️ Firebase متصل','#10b981');
+    }).catch(e=>{
+      fbReady=false;
+      fbDB=null;
+      // إذا كانت قاعدة البيانات غير موجودة، نعمل محلياً بصمت
+      if(e.code==='not-found'||e.message?.includes('does not exist')){
+        showSyncBadge('💾 تخزين محلي (Firebase غير مهيأ)','#6b7280');
+        console.info('Firestore database not found – using localStorage. To enable cloud sync, create a Firestore database at https://console.cloud.google.com/datastore/setup?project=almuhhet-accounting');
+      } else {
+        showSyncBadge('💾 تخزين محلي (غير متصل)','#6b7280');
+        console.info('Firebase unreachable – using localStorage fallback.');
+      }
+    });
   }catch(e){
     fbReady=false;
-    console.error('Firebase init error:',e);
-    showSyncBadge('💾 تخزين محلي فقط','#f59e0b');
+    fbDB=null;
+    showSyncBadge('💾 تخزين محلي','#6b7280');
   }
 }
 
@@ -1870,7 +1883,7 @@ function showSyncBadge(msg,color){
 /* ── حفظ البيانات (Firebase أولاً – نسخة محلية احتياطية) ── */
 async function saveToStorage(){
   // Firebase هو المصدر الأساسي للبيانات السحابية
-  if(fbReady){
+  if(fbReady && fbDB){
     try{
       const cleanSD = {};
       sheetNames.forEach(n=>{
@@ -1878,7 +1891,6 @@ async function saveToStorage(){
           columns: SD[n]?.columns||[],
           rows: (SD[n]?.rows||[]).map(r=>{
             const clean={...r};
-            // لا نحفظ ملفات base64 الكبيرة في Firestore
             Object.keys(clean).forEach(k=>{ if(k.startsWith('ملف_'))delete clean[k]; });
             return clean;
           })
@@ -1886,24 +1898,20 @@ async function saveToStorage(){
       });
       await fbDB.doc(FB_DOC_PATH).set({data: JSON.stringify(cleanSD), updated: Date.now()});
       showSyncBadge('☁️ تم الحفظ في السحابة','#10b981');
-      // نسخة احتياطية محلية بعد النجاح
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SD)); }catch(e){}
       return;
     }catch(e){
-      console.warn('Firebase save error:',e);
-      showSyncBadge('⚠️ فشل الحفظ السحابي – تحقق من الاتصال','#f59e0b');
+      fbReady=false; fbDB=null;
     }
-  } else {
-    showSyncBadge('🔴 Firebase غير متصل – الحفظ مؤقت محلياً فقط','#ef4444');
   }
-  // احتياطي: localStorage عند انقطاع الاتصال
+  // احتياطي: localStorage
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SD)); }catch(e){}
 }
 
 /* ── تحميل البيانات ── */
 async function loadFromStorage(){
-  // جرّب Firebase أولاً
-  if(fbReady){
+  // جرّب Firebase أولاً إذا كان متصلاً
+  if(fbReady && fbDB){
     try{
       const snap = await fbDB.doc(FB_DOC_PATH).get();
       if(snap.exists){
@@ -1911,13 +1919,15 @@ async function loadFromStorage(){
         sheetNames.forEach(n=>{
           if(saved[n]?.rows){ SD[n].rows=saved[n].rows; renumber(n); }
         });
-        // دمج الملفات المحلية (تبقى في localStorage)
         loadFileStore();
         renderDash(); updateBadges();
         showSyncBadge('☁️ تم التحميل من السحابة','#3b82f6');
         return true;
       }
-    }catch(e){ console.warn('Firebase load error:',e); }
+    }catch(e){
+      // Firebase فشل – نتحول لـlocalStorage بصمت
+      fbReady=false; fbDB=null;
+    }
   }
   // احتياطي: localStorage
   try{
