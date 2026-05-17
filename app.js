@@ -1816,13 +1816,7 @@ const STORAGE_KEY='almuheet_data_v2';
 // ═══════════════════════════════════════════
 // 🔒 أضف المفاتيح الجديدة في .env بدلاً من هنا
 // نسخة احتياطية: الملف .env.example يحتوي على النموذج
-const FIREBASE_ENV = (() => {
-  try {
-    return import.meta?.env || {};
-  } catch (e) {
-    return {};
-  }
-})();
+const FIREBASE_ENV = window.FIREBASE_ENV || {};
 
 const FIREBASE_CONFIG = window.FIREBASE_CONFIG || {
   apiKey:            FIREBASE_ENV.VITE_FIREBASE_API_KEY || "تم حذف المفتاح القديم",
