@@ -1960,6 +1960,17 @@ async function initFirebase(){
     }catch(e){
       fbReady=false;
       fbDB=null;
+      // Attempt to detect whether the failure is due to client-side blocking (AdBlock/uBlock/etc.)
+      try{
+        const blocked = await detectFirestoreBlock();
+        if(blocked){
+          showSyncBadge('🚫 تم حظر Firebase — تحقق من إضافات الحظر','#ef4444');
+          console.warn('Firestore requests appear to be blocked by client (AdBlock/uBlock).', e);
+          return false;
+        }
+      }catch(err){
+        console.warn('Error during firestore block detection:',err);
+      }
       if(e.code==='not-found'||e.message?.includes('does not exist')){
         showSyncBadge('💾 تخزين محلي (Firebase غير مهيأ)','#6b7280');
         console.info('Firestore database not found – using localStorage. To enable cloud sync, create a Firestore database at https://console.cloud.google.com/datastore/setup?project=almuhhet-accounting');
@@ -1974,6 +1985,21 @@ async function initFirebase(){
     fbDB=null;
     showSyncBadge('💾 تخزين محلي','#6b7280');
     return false;
+  }
+}
+
+// Try a lightweight fetch to Firestore host to see if requests are blocked by client.
+async function detectFirestoreBlock(){
+  try{
+    // A simple HEAD request; use mode 'no-cors' to avoid CORS failures turning into false negatives.
+    await fetch('https://firestore.googleapis.com/', {method:'HEAD', mode:'no-cors', cache:'no-store'});
+    // If fetch resolves, we can't be sure (opaque), assume not blocked
+    return false;
+  }catch(err){
+    const msg = (err && err.message) ? err.message.toString() : '';
+    if(msg.includes('blocked') || msg.includes('ERR_BLOCKED_BY_CLIENT') || msg.includes('net::ERR_BLOCKED_BY_CLIENT')) return true;
+    // If the fetch failed at network level, it *may* be blocked — return true to signal potential blocking.
+    return true;
   }
 }
 
