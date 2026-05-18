@@ -1936,6 +1936,8 @@ const FB_DOC_PATH = "almuheet/data";      // مسار المستند في Firest
 const FB_FILES_DOC = "almuheet/files";   // مسار ملفات الأرشيف
 let   fbReady = false;
 let   fbDB    = null;
+let   fbDataUnsub = null;
+let   fbFilesUnsub = null;
 
 function isFirebaseConfigIncomplete(config){
   const bad = [config.apiKey, config.authDomain, config.projectId, config.storageBucket, config.messagingSenderId, config.appId];
@@ -1956,6 +1958,33 @@ async function initFirebase(){
       await fbDB.doc(FB_DOC_PATH).get();
       fbReady=true;
       showSyncBadge('☁️ Firebase متصل','#10b981');
+
+      // Real-time listeners: data doc
+      try{
+        if(fbDataUnsub) fbDataUnsub();
+        fbDataUnsub = fbDB.doc(FB_DOC_PATH).onSnapshot(snap=>{
+          if(!snap.exists) return;
+          try{
+            const payload = JSON.parse(snap.data().data||'{}');
+            // Merge incoming rows without clobbering local structure
+            sheetNames.forEach(n=>{
+              if(payload[n]?.rows){ SD[n].rows = payload[n].rows; renumber(n); }
+            });
+            loadFileStore(); renderDash(); updateBadges();
+            showSyncBadge('☁️ تم التحديث من السحابة','#3b82f6');
+          }catch(err){console.warn('Realtime data parse error',err)}
+        },err=>{console.warn('Data onSnapshot error',err);});
+      }catch(err){console.warn('Failed to attach data listener',err)}
+
+      // Real-time listeners: files doc
+      try{
+        if(fbFilesUnsub) fbFilesUnsub();
+        fbFilesUnsub = fbDB.doc(FB_FILES_DOC).onSnapshot(snap=>{
+          if(!snap.exists) return;
+          try{ FILE_STORE = JSON.parse(snap.data().files||'{}'); localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE)); renderArchiveCounts(); showSyncBadge('☁️ الأرشيف محدث','#3b82f6'); }catch(err){console.warn('Realtime files parse error',err)}
+        },err=>{console.warn('Files onSnapshot error',err);});
+      }catch(err){console.warn('Failed to attach files listener',err)}
+
       return true;
     }catch(e){
       fbReady=false;
@@ -2020,6 +2049,15 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(modal) modal.addEventListener('click', (ev)=>{ if(ev.target===modal) hideBlockerHelp(); });
   }catch(e){console.warn('blocker help init failed',e)}
 });
+
+// When user returns to the tab or focuses window, refresh from cloud to reduce perceived delay
+let _lastSyncCheck = 0;
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible'){
+    const now=Date.now(); if(now-_lastSyncCheck<2000) return; _lastSyncCheck=now; loadFromStorage();
+  }
+});
+window.addEventListener('focus', ()=>{ const now=Date.now(); if(now-_lastSyncCheck<2000) return; _lastSyncCheck=now; loadFromStorage(); });
 
 function showSyncBadge(msg,color){
   let b=g('fbSyncBadge');
