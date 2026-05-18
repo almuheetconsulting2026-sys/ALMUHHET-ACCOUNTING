@@ -431,7 +431,7 @@ function settingsClearAllData(){
 function deleteArchiveFile(fileId,sub){
   if(!canDeleteArchive()){showToast('⛔ لا تملك صلاحية حذف ملفات الأرشيف','danger');return;}
   if(!confirm('حذف هذا الملف من الأرشيف نهائياً؟'))return;
-  if(fileStore[fileId])delete fileStore[fileId];
+  if(FILE_STORE[fileId]) delete FILE_STORE[fileId];
   // Remove from row references
   sheetNames.forEach(sn=>{
     SD[sn]?.rows?.forEach(r=>{
@@ -518,6 +518,7 @@ async function saveFileStore(){
   if(typeof fbDB!=='undefined'&&fbDB&&fbReady){
     try{await fbDB.doc(FB_FILES_DOC).set({files:JSON.stringify(FILE_STORE),updated:Date.now()});}catch(e){console.warn('FB file store save error:',e);}
   }
+  renderArchiveCounts();
 }
 async function loadFileStore(){
   FILE_STORE={};
@@ -651,30 +652,40 @@ function renderArchiveSub(sub){
   else if(sub==='payments')renderArchivePayments();
 }
 
+function renderArchiveCounts(){
+  const c1=g('archContractCount');
+  const c2=g('archReceiptCount');
+  const c3=g('archPaymentCount');
+  if(c1) c1.textContent = `${getArchiveFiles('contracts').length} ملف`;
+  if(c2) c2.textContent = `${getArchiveFiles('receipts').length} ملف`;
+  if(c3) c3.textContent = `${getArchiveFiles('payments').length} ملف`;
+  if(currentArchSub) renderArchiveSub(currentArchSub);
+}
+
 /* ── جمع ملفات الأرشيف حسب النوع ── */
 function getArchiveFiles(sub){
   const files=[];
   if(sub==='contracts'){
     const allSrc=[...revSheets,"ترحيل البيانات"];
     allSrc.forEach(s=>SD[s]?.rows.forEach(r=>{
-      if(r["ملف_العقد"]&&FILE_STORE[r["ملف_العقد"]]){
+      if(r["ملف_العقد"]){
         files.push({fileId:r["ملف_العقد"],label:'عقد',client:r["اسم العميل"]||'',proj:r["رقم العقار"]||'',date:getRecordDate(r)||''});
       }
     }));
   } else if(sub==='receipts'){
     const allSrc=[...revSheets,"ترحيل البيانات"];
     allSrc.forEach(s=>SD[s]?.rows.forEach(r=>{
-      if(r["ملف_سند_القبض"]&&FILE_STORE[r["ملف_سند_القبض"]])
+      if(r["ملف_سند_القبض"])
         files.push({fileId:r["ملف_سند_القبض"],label:'سند قبض – الدفعة الأولى',client:r["اسم العميل"]||'',proj:r["رقم العقار"]||'',date:getRecordDate(r)||''});
       for(let i=1;i<=12;i++){
         const fKey=`ملف_قبض_قسط_${i}`;
-        if(r[fKey]&&FILE_STORE[r[fKey]])
+        if(r[fKey])
           files.push({fileId:r[fKey],label:`سند قبض – القسط ${i}`,client:r["اسم العميل"]||'',proj:r["رقم العقار"]||'',date:r[`تاريخ قسط ${i}`]||''});
       }
     }));
   } else if(sub==='payments'){
     SD["المصاريف"]?.rows.forEach(r=>{
-      if(r["ملف_سند_الصرف"]&&FILE_STORE[r["ملف_سند_الصرف"]])
+      if(r["ملف_سند_الصرف"])
         files.push({fileId:r["ملف_سند_الصرف"],label:'سند صرف',client:r["البيان"]||'',proj:r["رقم سند الصرف"]||'',date:r["التاريخ"]||''});
     });
   }
@@ -687,14 +698,14 @@ function printArchiveSub(sub){
   const titles={contracts:'📄 أرشيف العقود',receipts:'🧾 أرشيف سندات القبض',payments:'💸 أرشيف سندات الصرف'};
   const w=window.open('','_blank');
   let rows=files.map((f,i)=>{
-    const fi=FILE_STORE[f.fileId];
-    const isImg=fi?.type?.startsWith('image/');
-    const thumb=isImg?`<img src="${fi.data}" style="width:80px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #e2ecf5;">`:
-      `<div style="width:80px;height:60px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:1.8rem;">${getFileIcon(fi?.name||'')}</div>`;
+    const fi=FILE_STORE[f.fileId]||{};
+    const isImg=fi.type?.startsWith('image/');
+    const thumb=isImg?`<img src="${fi.data||''}" style="width:80px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #e2ecf5;">`:
+      `<div style="width:80px;height:60px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:1.8rem;">${getFileIcon(fi.name||f.label)}</div>`;
     return`<tr>
       <td style="text-align:center">${i+1}</td>
       <td>${thumb}</td>
-      <td>${fi?.name||'—'}</td>
+      <td>${fi.name||f.label||'ملف'}</td>
       <td>${f.label}</td>
       <td>${f.client}</td>
       <td>${f.proj}</td>
@@ -739,9 +750,11 @@ async function downloadAllArchive(sub){
 }
 
 function makeArchCard(fileId,fname,label,client,proj,date,sheet){
-  const f=FILE_STORE[fileId];if(!f)return'';
-  const icon=getFileIcon(f.name);const kb=f.size?(f.size/1024).toFixed(0)+' KB':'';
-  const dStr=new Date(f.uploaded).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
+  const f=FILE_STORE[fileId]||{};
+  const icon=getFileIcon(f.name||fname);
+  const kb=f.size?(f.size/1024).toFixed(0)+' KB':'';
+  const uploadedDate = f.uploaded ? new Date(f.uploaded).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}) : '';
+  const displayName = f.name||fname||'ملف';
   return`<div class="arch-card">
     <div class="arch-card-hdr">
       <div class="arch-file-icon">${icon}</div>
@@ -1393,6 +1406,12 @@ async function saveRevRecord(){
     row[`رقم قبض قسط ${i+1}`]=x.rcpt;
     if(x.fileId)row[`ملف_قبض_قسط_${i+1}`]=x.fileId;
   });
+  // Register files so they appear in Archive with metadata
+  const _fileIds = [];
+  if(row["ملف_العقد"]) _fileIds.push(row["ملف_العقد"]);
+  if(row["ملف_سند_القبض"]) _fileIds.push(row["ملف_سند_القبض"]);
+  for(let i=1;i<=12;i++){ if(row[`ملف_قبض_قسط_${i}`]) _fileIds.push(row[`ملف_قبض_قسط_${i}`]); }
+  await registerFilesForArchive(_fileIds, {sheet: 'ترحيل البيانات', client: row["اسم العميل"]||'', proj: row["رقم العقار"]||'', date: getRecordDate(row)||row["تاريخ الدفعة الاولى"]||''});
   SD["ترحيل البيانات"].rows.push(row);
   renumber("ترحيل البيانات");
   await saveToStorage();
@@ -1406,6 +1425,9 @@ async function saveExpRecord(){
   const expSh=SD["المصاريف"];
   const newRow={"م":expSh.rows.length+1,"التاريخ":date,"البيان":desc,"تصنيف المصروف":cat,"رقم سند الصرف":gv('e_voucher'),"المبلغ":parseFloat(gv('e_amt'))||""," طريقة الصرف":gv('e_pay'),"المستفيد":gv('e_beneficiary'),"رقم الجوال":gv('e_ben_mobile'),"الرقم الشخصي":gv('e_ben_id'),"ملف_سند_الصرف":_tempExpFileId||''};
   expSh.rows.push(newRow);
+  const _fileIds = [];
+  if(newRow["ملف_سند_الصرف"]) _fileIds.push(newRow["ملف_سند_الصرف"]);
+  await registerFilesForArchive(_fileIds, {sheet: 'المصاريف', client: newRow["المستفيد"]||newRow["البيان"]||'', proj: newRow["رقم سند الصرف"]||'', date: newRow["التاريخ"]||''});
   _tempExpFileId='';
   renumber("المصاريف");
   closeModal('addExpModal');renderExpTable();updateBadges();
@@ -1962,7 +1984,7 @@ async function initFirebase(){
       // Real-time listeners: data doc
       try{
         if(fbDataUnsub) fbDataUnsub();
-        fbDataUnsub = fbDB.doc(FB_DOC_PATH).onSnapshot(snap=>{
+        fbDataUnsub = fbDB.doc(FB_DOC_PATH).onSnapshot(async snap=>{
           if(!snap.exists) return;
           try{
             const payload = JSON.parse(snap.data().data||'{}');
@@ -1970,8 +1992,9 @@ async function initFirebase(){
             sheetNames.forEach(n=>{
               if(payload[n]?.rows){ SD[n].rows = payload[n].rows; renumber(n); }
             });
-            loadFileStore(); renderDash(); updateBadges();
+            await loadFileStore(); renderDash(); updateBadges();
             showSyncBadge('☁️ تم التحديث من السحابة','#3b82f6');
+            try{ updateTopbarSync(true, Date.now()); }catch(e){}
           }catch(err){console.warn('Realtime data parse error',err)}
         },err=>{console.warn('Data onSnapshot error',err);});
       }catch(err){console.warn('Failed to attach data listener',err)}
@@ -2052,12 +2075,14 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 // When user returns to the tab or focuses window, refresh from cloud to reduce perceived delay
 let _lastSyncCheck = 0;
-document.addEventListener('visibilitychange', ()=>{
+document.addEventListener('visibilitychange', async ()=>{
   if(document.visibilityState==='visible'){
-    const now=Date.now(); if(now-_lastSyncCheck<2000) return; _lastSyncCheck=now; loadFromStorage();
+    const now=Date.now(); if(now-_lastSyncCheck<2000) return; _lastSyncCheck=now;
+    if(!fbReady && !isFirebaseConfigIncomplete(FIREBASE_CONFIG)) await initFirebase();
+    await loadFromStorage();
   }
 });
-window.addEventListener('focus', ()=>{ const now=Date.now(); if(now-_lastSyncCheck<2000) return; _lastSyncCheck=now; loadFromStorage(); });
+window.addEventListener('focus', async ()=>{ const now=Date.now(); if(now-_lastSyncCheck<2000) return; _lastSyncCheck=now; if(!fbReady && !isFirebaseConfigIncomplete(FIREBASE_CONFIG)) await initFirebase(); await loadFromStorage(); });
 
 function showSyncBadge(msg,color){
   let b=g('fbSyncBadge');
@@ -2088,10 +2113,12 @@ async function saveToStorage(){
       });
       await fbDB.doc(FB_DOC_PATH).set({data: serializedSD, updated: Date.now()});
       showSyncBadge('☁️ تم الحفظ في السحابة','#10b981');
+      try{ updateTopbarSync(true, Date.now()); }catch(e){}
       return;
     }catch(e){
       fbReady=false; fbDB=null;
       showSyncBadge('💾 فشل مزامنة السحابة – تم الحفظ محلياً','#d97706');
+      try{ updateTopbarSync(false); }catch(err){}
     }
   }
 }
@@ -2110,6 +2137,7 @@ async function loadFromStorage(){
         await loadFileStore();
         renderDash(); updateBadges();
         showSyncBadge('☁️ تم التحميل من السحابة','#3b82f6');
+        try{ updateTopbarSync(true, Date.now()); }catch(e){}
         return true;
       }
     }catch(e){
