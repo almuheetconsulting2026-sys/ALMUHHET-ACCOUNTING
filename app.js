@@ -1990,7 +1990,11 @@ async function initFirebase(){
             const payload = JSON.parse(snap.data().data||'{}');
             // Merge incoming rows without clobbering local structure
             sheetNames.forEach(n=>{
-              if(payload[n]?.rows){ SD[n].rows = payload[n].rows; renumber(n); }
+              if(payload[n]?.rows){
+                if(!SD[n]) SD[n] = { columns: [], rows: [] };
+                SD[n].rows = payload[n].rows;
+                renumber(n);
+              }
             });
             await loadFileStore(); renderDash(); updateBadges();
             showSyncBadge('☁️ تم التحديث من السحابة','#3b82f6');
@@ -2132,7 +2136,11 @@ async function loadFromStorage(){
       if(snap.exists){
         const saved = JSON.parse(snap.data().data||'{}');
         sheetNames.forEach(n=>{
-          if(saved[n]?.rows){ SD[n].rows=saved[n].rows; renumber(n); }
+          if(saved[n]?.rows){
+            if(!SD[n]) SD[n] = { columns: [], rows: [] };
+            SD[n].rows = saved[n].rows;
+            renumber(n);
+          }
         });
         await loadFileStore();
         renderDash(); updateBadges();
@@ -2151,7 +2159,11 @@ async function loadFromStorage(){
     if(!raw) return false;
     const saved=JSON.parse(raw);
     sheetNames.forEach(n=>{
-      if(saved[n]?.rows){ SD[n].rows=saved[n].rows; renumber(n); }
+      if(saved[n]?.rows){
+        if(!SD[n]) SD[n] = { columns: [], rows: [] };
+        SD[n].rows=saved[n].rows;
+        renumber(n);
+      }
     });
     await loadFileStore();
     return true;
