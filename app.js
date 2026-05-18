@@ -2003,6 +2003,24 @@ async function detectFirestoreBlock(){
   }
 }
 
+// UI: blocker-help modal controls
+function showBlockerHelp(){
+  const m = document.getElementById('blockerHelpModal');
+  if(m) m.style.display = 'flex';
+}
+function hideBlockerHelp(){
+  const m = document.getElementById('blockerHelpModal');
+  if(m) m.style.display = 'none';
+}
+document.addEventListener('DOMContentLoaded', ()=>{
+  try{
+    const btn = document.getElementById('blockerHelpBtn');
+    if(btn) btn.addEventListener('click', showBlockerHelp);
+    const modal = document.getElementById('blockerHelpModal');
+    if(modal) modal.addEventListener('click', (ev)=>{ if(ev.target===modal) hideBlockerHelp(); });
+  }catch(e){console.warn('blocker help init failed',e)}
+});
+
 function showSyncBadge(msg,color){
   let b=g('fbSyncBadge');
   if(!b){
