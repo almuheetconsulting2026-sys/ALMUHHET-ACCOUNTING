@@ -249,7 +249,7 @@ async function logActivity(action, details){
       action,
       details,
       timestamp: Date.now(),
-      date: new Date().toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'})
+      date: new Date().toLocaleString('en-US',{timeZone:'Asia/Riyadh'})
     };
     await fbDB.collection(FB_ACTIVITY_COL).add(entry);
   }catch(e){ console.warn('Activity log error:',e); }
@@ -447,18 +447,18 @@ function deleteArchiveFile(fileId,sub){
 function instCols(n){let c=[];for(let i=1;i<=n;i++)c.push(`تاريخ قسط ${i}`,`مبلغ قسط ${i}`);return c;}
 const INST=12;
 const masterCols=[
-  "م","اسم العميل","رقم الجوال","رقم المشروع","البيان","تاريخ السند","رقم السند",
+  "م","اسم العميل","رقم الجوال","رقم العقار","اسم المهندس المشرف","البيان",
   "مبلغ المشروع","مبلغ الدفعة الاولى","تاريخ الدفعة الاولى",
   ...instCols(INST),
   "طريقة الدفع (إيرادات)","رقم سند الصرف (مصاريف)","مبلغ المصروف","طريقة الصرف (مصاريف)","تصنيف المصروف"
 ];
 const revBaseCols=[
-  "م","اسم العميل","رقم الجوال","رقم المشروع","البيان","تاريخ السند","رقم السند",
+  "م","اسم العميل","رقم الجوال","رقم العقار","اسم المهندس المشرف","البيان",
   "مبلغ المشروع","مبلغ الدفعة الاولى","تاريخ الدفعة الاولى",
   ...instCols(3),"طريقة الدفع","حالة المشروع"
 ];
 const supCols=[
-  "م","اسم العميل","رقم الجوال","رقم المشروع","البيان","تاريخ السند","رقم السند",
+  "م","اسم العميل","رقم الجوال","رقم العقار","اسم المهندس المشرف","البيان",
   "مبلغ المشروع","مبلغ الدفعة الاولى","تاريخ الدفعة الاولى",
   ...instCols(INST),"طريقة الدفع","حالة المشروع"
 ];
@@ -496,13 +496,36 @@ function genInst(start,total,first){
   return Array.from({length:12},(_,i)=>{let d=new Date(sd);d.setMonth(d.getMonth()+i+1);
     return{date:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,amount:mo};});
 }
-function today(){return new Date().toLocaleDateString('ar-SA',{weekday:'long',year:'numeric',month:'long',day:'numeric'}).replace(/[\u0660-\u0669]/g,d=>String.fromCharCode(d.charCodeAt(0)-0x0660+48));}
+function today(){return new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});}
+function getRecordDate(r){
+  if(!r||typeof r!=='object')return '';
+  if(r["تاريخ الدفعة الاولى"])return r["تاريخ الدفعة الاولى"];
+  if(r["تاريخ السند"])return r["تاريخ السند"];
+  for(let i=1;i<=12;i++){if(r[`تاريخ قسط ${i}`])return r[`تاريخ قسط ${i}`];}
+  return '';
+}
 
 // ═══════════════════════════════════════════
 // FILE STORE HELPERS
 // ═══════════════════════════════════════════
-function saveFileStore(){try{localStorage.setItem(FILE_STORE_KEY,JSON.stringify(FILE_STORE));}catch(e){console.warn('File store save failed:',e);}}
-function loadFileStore(){try{const raw=localStorage.getItem(FILE_STORE_KEY);if(raw)FILE_STORE=JSON.parse(raw);}catch(e){FILE_STORE={};}}
+async function saveFileStore(){
+  try{localStorage.setItem(FILE_STORE_KEY,JSON.stringify(FILE_STORE));}catch(e){console.warn('File store save failed:',e);}
+  if(typeof fbDB!=='undefined'&&fbDB&&fbReady){
+    try{await fbDB.doc(FB_FILES_DOC).set({files:JSON.stringify(FILE_STORE),updated:Date.now()});}catch(e){console.warn('FB file store save error:',e);}
+  }
+}
+async function loadFileStore(){
+  FILE_STORE={};
+  try{const raw=localStorage.getItem(FILE_STORE_KEY);if(raw)FILE_STORE=JSON.parse(raw);}catch(e){FILE_STORE={};}
+  if(typeof fbDB!=='undefined'&&fbDB&&fbReady){
+    try{
+      const snap = await fbDB.doc(FB_FILES_DOC).get();
+      if(snap.exists){
+        try{FILE_STORE=JSON.parse(snap.data().files||'{}');localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE));}catch(e){}
+      }
+    }catch(e){console.warn('FB file store load error:',e);}
+  }
+}
 function fileToBase64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);});}
 function getFileIcon(name){const ext=(name||'').split('.').pop().toLowerCase();if(ext==='pdf')return'📕';if(['doc','docx'].includes(ext))return'📘';if(['jpg','jpeg','png','gif'].includes(ext))return'🖼️';return'📎';}
 function getFileTypeBadge(name){const ext=(name||'').split('.').pop().toUpperCase();return ext||'ملف';}
@@ -630,18 +653,18 @@ function getArchiveFiles(sub){
     const allSrc=[...revSheets,"ترحيل البيانات"];
     allSrc.forEach(s=>SD[s]?.rows.forEach(r=>{
       if(r["ملف_العقد"]&&FILE_STORE[r["ملف_العقد"]]){
-        files.push({fileId:r["ملف_العقد"],label:'عقد',client:r["اسم العميل"]||'',proj:r["رقم المشروع"]||'',date:r["تاريخ السند"]||''});
+        files.push({fileId:r["ملف_العقد"],label:'عقد',client:r["اسم العميل"]||'',proj:r["رقم العقار"]||'',date:getRecordDate(r)||''});
       }
     }));
   } else if(sub==='receipts'){
     const allSrc=[...revSheets,"ترحيل البيانات"];
     allSrc.forEach(s=>SD[s]?.rows.forEach(r=>{
       if(r["ملف_سند_القبض"]&&FILE_STORE[r["ملف_سند_القبض"]])
-        files.push({fileId:r["ملف_سند_القبض"],label:'سند قبض – الدفعة الأولى',client:r["اسم العميل"]||'',proj:r["رقم المشروع"]||'',date:r["تاريخ السند"]||''});
+        files.push({fileId:r["ملف_سند_القبض"],label:'سند قبض – الدفعة الأولى',client:r["اسم العميل"]||'',proj:r["رقم العقار"]||'',date:getRecordDate(r)||''});
       for(let i=1;i<=12;i++){
         const fKey=`ملف_قبض_قسط_${i}`;
         if(r[fKey]&&FILE_STORE[r[fKey]])
-          files.push({fileId:r[fKey],label:`سند قبض – القسط ${i}`,client:r["اسم العميل"]||'',proj:r["رقم المشروع"]||'',date:r[`تاريخ قسط ${i}`]||''});
+          files.push({fileId:r[fKey],label:`سند قبض – القسط ${i}`,client:r["اسم العميل"]||'',proj:r["رقم العقار"]||'',date:r[`تاريخ قسط ${i}`]||''});
       }
     }));
   } else if(sub==='payments'){
@@ -682,9 +705,9 @@ function printArchiveSub(sub){
   .footer{text-align:center;margin-top:20px;color:#94a3b8;font-size:10px;}
   @media print{body{padding:6px;}}</style></head><body>
   <h1>${titles[sub]||'الأرشيف'} – المحيط للاستشارات الهندسية</h1>
-  <p style="color:#64748b;font-size:10px;margin-bottom:12px;">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')} | عدد الملفات: ${files.length}</p>
+  <p style="color:#64748b;font-size:10px;margin-bottom:12px;">تاريخ الطباعة: ${new Date().toLocaleDateString('en-US')} | عدد الملفات: ${files.length}</p>
   ${files.length===0?'<p style="text-align:center;padding:30px;color:#94a3b8;">لا توجد ملفات في هذا الأرشيف</p>':`
-  <table><thead><tr><th>#</th><th>معاينة</th><th>اسم الملف</th><th>النوع</th><th>العميل / البيان</th><th>رقم المشروع</th><th>التاريخ</th></tr></thead>
+  <table><thead><tr><th>#</th><th>معاينة</th><th>اسم الملف</th><th>النوع</th><th>العميل / البيان</th><th>رقم العقار</th><th>التاريخ</th></tr></thead>
   <tbody>${rows}</tbody></table>`}
   <div class="footer">© 2026 المحيط للاستشارات الهندسية – جميع الحقوق محفوظة</div>
   <script>window.onload=function(){window.print();}<\/script></body></html>`);
@@ -713,7 +736,7 @@ async function downloadAllArchive(sub){
 function makeArchCard(fileId,fname,label,client,proj,date,sheet){
   const f=FILE_STORE[fileId];if(!f)return'';
   const icon=getFileIcon(f.name);const kb=f.size?(f.size/1024).toFixed(0)+' KB':'';
-  const dStr=new Date(f.uploaded).toLocaleDateString('ar-SA',{year:'numeric',month:'short',day:'numeric'});
+  const dStr=new Date(f.uploaded).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
   return`<div class="arch-card">
     <div class="arch-card-hdr">
       <div class="arch-file-icon">${icon}</div>
@@ -741,13 +764,13 @@ function renderArchiveContracts(){
   const cards=[];
   revSheets.forEach(s=>SD[s]?.rows.forEach(r=>{
     if(r["ملف_العقد"]){
-      cards.push(makeArchCard(r["ملف_العقد"],'عقد',s,r["اسم العميل"]||'',r["رقم المشروع"]||'',r["تاريخ السند"]||'',s));
+      cards.push(makeArchCard(r["ملف_العقد"],'عقد',s,r["اسم العميل"]||'',r["رقم العقار"]||'',getRecordDate(r)||'',s));
     }
   }));
   // Also check ترحيل البيانات
   SD["ترحيل البيانات"]?.rows.forEach(r=>{
     if(r["ملف_العقد"]){
-      cards.push(makeArchCard(r["ملف_العقد"],'عقد – ترحيل البيانات',r["اسم العميل"]||'',r["رقم المشروع"]||'',r["تاريخ السند"]||'','ترحيل البيانات',''));
+      cards.push(makeArchCard(r["ملف_العقد"],'عقد – ترحيل البيانات',r["اسم العميل"]||'',r["رقم العقار"]||'',getRecordDate(r)||'','ترحيل البيانات',''));
     }
   });
   if(count)count.textContent=`${cards.length} ملف`;
@@ -761,14 +784,14 @@ function renderArchiveReceipts(){
   allRevSources.forEach(s=>SD[s]?.rows.forEach(r=>{
     // Main receipt file
     if(r["ملف_سند_القبض"]){
-      cards.push(makeArchCard(r["ملف_سند_القبض"],'سند قبض – الدفعة الأولى',s,r["اسم العميل"]||'',r["رقم المشروع"]||'',r["تاريخ السند"]||'',s));
+      cards.push(makeArchCard(r["ملف_سند_القبض"],'سند قبض – الدفعة الأولى',s,r["اسم العميل"]||'',r["رقم العقار"]||'',getRecordDate(r)||'',s));
     }
     // Installment receipt files
     for(let i=1;i<=12;i++){
       const fKey=`ملف_قبض_قسط_${i}`;
       if(r[fKey]){
         const instDate=r[`تاريخ قسط ${i}`]||'';
-        cards.push(makeArchCard(r[fKey],`سند قبض – القسط ${i}`,s,r["اسم العميل"]||'',r["رقم المشروع"]||'',instDate,s));
+        cards.push(makeArchCard(r[fKey],`سند قبض – القسط ${i}`,s,r["اسم العميل"]||'',r["رقم العقار"]||'',instDate,s));
       }
     }
   }));
@@ -823,7 +846,7 @@ function getOverdue(){
   const t=new Date();t.setHours(0,0,0,0);const res=[];
   [...revSheets,"ترحيل البيانات"].forEach(s=>SD[s]?.rows.forEach(r=>{
     for(let i=1;i<=12;i++){const ds=r[`تاريخ قسط ${i}`],am=r[`مبلغ قسط ${i}`];
-      if(ds&&am&&parseFloat(am)>0&&new Date(ds)<t)res.push({client:r["اسم العميل"]||"غير محدد",proj:r["رقم المشروع"]||"",n:i,date:ds,amt:parseFloat(am),sheet:s});}
+      if(ds&&am&&parseFloat(am)>0&&new Date(ds)<t)res.push({client:r["اسم العميل"]||"غير محدد",proj:r["رقم العقار"]||"",n:i,date:ds,amt:parseFloat(am),sheet:s});}
   }));
   return res;
 }
@@ -831,17 +854,17 @@ function getUpcoming(){
   const t=new Date();t.setHours(0,0,0,0);const nm=new Date(t);nm.setMonth(nm.getMonth()+1);const res=[];
   [...revSheets,"ترحيل البيانات"].forEach(s=>SD[s]?.rows.forEach(r=>{
     for(let i=1;i<=12;i++){const ds=r[`تاريخ قسط ${i}`],am=r[`مبلغ قسط ${i}`];
-      if(ds&&am&&parseFloat(am)>0){const d=new Date(ds);if(d>=t&&d<=nm)res.push({client:r["اسم العميل"]||"غير محدد",proj:r["رقم المشروع"]||"",n:i,date:ds,amt:parseFloat(am),sheet:s});}}
+      if(ds&&am&&parseFloat(am)>0){const d=new Date(ds);if(d>=t&&d<=nm)res.push({client:r["اسم العميل"]||"غير محدد",proj:r["رقم العقار"]||"",n:i,date:ds,amt:parseFloat(am),sheet:s});}}
   }));
   return res.sort((a,b)=>new Date(a.date)-new Date(b.date));
 }
 function monthlyData(){
   const today=new Date(),mons=[];
   for(let i=5;i>=0;i--){const d=new Date(today);d.setMonth(d.getMonth()-i);
-    mons.push({y:d.getFullYear(),m:d.getMonth()+1,lbl:d.toLocaleDateString('ar-SA',{month:'short',year:'2-digit'})});}
+    mons.push({y:d.getFullYear(),m:d.getMonth()+1,lbl:d.toLocaleDateString('en-US',{month:'short',year:'2-digit'})});}
   const rv={},ex={};
   mons.forEach(m=>{const k=`${m.y}-${m.m}`;rv[k]=0;ex[k]=0;});
-  revSheets.forEach(s=>SD[s]?.rows.forEach(r=>{const ds=r["تاريخ السند"];if(ds){const d=new Date(ds),k=`${d.getFullYear()}-${d.getMonth()+1}`;if(rv[k]!==undefined)rv[k]+=parseFloat(r["مبلغ المشروع"]||0);}}));
+  revSheets.forEach(s=>SD[s]?.rows.forEach(r=>{const ds=getRecordDate(r);if(ds){const d=new Date(ds),k=`${d.getFullYear()}-${d.getMonth()+1}`;if(rv[k]!==undefined)rv[k]+=parseFloat(r["مبلغ المشروع"]||0);}}));
   SD["المصاريف"]?.rows.forEach(r=>{const ds=r["التاريخ"];if(ds){const d=new Date(ds),k=`${d.getFullYear()}-${d.getMonth()+1}`;if(ex[k]!==undefined)ex[k]+=parseFloat(r["المبلغ"]||0);}});
   return{labels:mons.map(m=>m.lbl),rev:mons.map(m=>rv[`${m.y}-${m.m}`]||0),exp:mons.map(m=>ex[`${m.y}-${m.m}`]||0)};
 }
@@ -853,7 +876,7 @@ function revByCategory(){
 }
 function monthlyRevReport(){
   const m={};
-  revSheets.forEach(s=>SD[s]?.rows.forEach(r=>{const ds=r["تاريخ السند"];if(ds){const d=new Date(ds),k=`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}`;m[k]=(m[k]||0)+parseFloat(r["مبلغ المشروع"]||0);}}));
+  revSheets.forEach(s=>SD[s]?.rows.forEach(r=>{const ds=getRecordDate(r);if(ds){const d=new Date(ds),k=`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}`;m[k]=(m[k]||0)+parseFloat(r["مبلغ المشروع"]||0);}}));
   return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0]));
 }
 function expByCat(){
@@ -1132,7 +1155,7 @@ function renderTable(){
 function showInstModal(sheetName,rowIdx){
   const row=SD[sheetName]?.rows[rowIdx];if(!row)return;
   const client=row["اسم العميل"]||"";
-  const proj=row["رقم المشروع"]||"";
+  const proj=row["رقم العقار"]||"";
   g('instModalTitle').textContent=`📅 أقساط ${client} – ${proj}`;
   let filled=0,total=0,paid=0;
   const today=new Date();today.setHours(0,0,0,0);
@@ -1186,7 +1209,7 @@ function migrate(idxs,tgt){
       let v="";
       if(c==="م")v="";
       else if(tgt==="المصاريف"){
-        if(c==="التاريخ")v=sr["تاريخ السند"]||"";
+        if(c==="التاريخ")v=getRecordDate(sr)||"";
         else if(c==="البيان")v=sr["البيان"]||"";
         else if(c==="رقم سند الصرف")v=sr["رقم سند الصرف (مصاريف)"]||"";
         else if(c==="المبلغ")v=sr["مبلغ المصروف"]||"";
@@ -1212,7 +1235,7 @@ let currentContractType="مقطوعية";
 let instCounters={maq:0,sh:0,mi:0}; // track how many rows each type has
 
 function openAddModal(){
-  ['m_client','m_mobile','m_proj_no','m_desc','m_date','m_voucher_no','m_proj_amt','m_first_amt','m_first_date','m_first_book','m_first_receipt','m_contract_start','m_months_count','m_monthly_amt','m_contract_date_start','m_contract_date_end'].forEach(id=>{if(g(id))g(id).value=id==='m_months_count'?'12':'';});
+  ['m_client','m_mobile','m_property_no','m_supervisor','m_desc','m_proj_amt','m_first_amt','m_first_date','m_first_book','m_first_receipt','m_contract_start','m_months_count','m_monthly_amt','m_contract_date_start','m_contract_date_end'].forEach(id=>{if(g(id))g(id).value=id==='m_months_count'?'12':'';});
   // Reset file uploads
   ['m_contract_file','m_receipt_file'].forEach(id=>{const el=g(id);if(el)el.value='';});
   ['m_contract_preview','m_receipt_preview'].forEach(id=>{const el=g(id);if(el)el.innerHTML='';});
@@ -1333,13 +1356,14 @@ function collectInstRows(prefix){
 }
 
 function saveRevRecord(){
-  const date=gv('m_date'),desc=gv('m_desc'),client=gv('m_client');
-  if(!date||!desc||!client){alert('يرجى إدخال البيان والتاريخ واسم العميل على الأقل');return;}
+  const desc=gv('m_desc'),client=gv('m_client');
+  if(!desc||!client){alert('يرجى إدخال البيان واسم العميل على الأقل');return;}
   const row={};
   masterCols.forEach(c=>row[c]="");
-  row["البيان"]=desc;row["تاريخ السند"]=date;row["رقم السند"]=gv('m_voucher_no');
+  row["البيان"]=desc;
   row["اسم العميل"]=client;row["رقم الجوال"]=gv('m_mobile');
-  row["رقم المشروع"]=gv('m_proj_no');
+  row["رقم العقار"] = gv('m_property_no');
+  row["اسم المهندس المشرف"] = gv('m_supervisor');
   row["مبلغ المشروع"]=parseFloat(gv('m_proj_amt'))||"";
   row["مبلغ الدفعة الاولى"]=parseFloat(gv('m_first_amt'))||"";
   row["تاريخ الدفعة الاولى"]=gv('m_first_date');
@@ -1497,14 +1521,14 @@ function renderClientProjectsReport(){
   const el=g('clientProjectsReport');if(!el)return;
   if(!rows.length){el.innerHTML=`<div class="empty"><div class="ei">📭</div><p>لا توجد بيانات</p></div>`;return;}
   let html=`<div class="tbl-scroll"><table class="rpt-table"><thead><tr>
-    <th>العميل</th><th>المشروع</th><th>رقم المشروع</th><th>قيمة المشروع</th><th>الدفعة الأولى</th><th>الحالة</th>
+    <th>العميل</th><th>المشروع</th><th>رقم العقار</th><th>قيمة المشروع</th><th>الدفعة الأولى</th><th>الحالة</th>
   </tr></thead><tbody>`;
   rows.forEach(r=>{
     const stCls=r["حالة المشروع"]==='نشط'?'bdg-green':r["حالة المشروع"]==='مكتمل'?'bdg-blue':r["حالة المشروع"]==='موقوف'?'bdg-amber':'bdg-gray';
     html+=`<tr>
       <td>${r["اسم العميل"]||'-'}</td>
       <td>${r["البيان"]||'-'}</td>
-      <td>${r["رقم المشروع"]||'-'}</td>
+      <td>${r["رقم العقار"]||'-'}</td>
       <td style="color:var(--green);font-weight:700;">${fmt(parseFloat(r["مبلغ المشروع"]||0))} ر.ق</td>
       <td>${fmt(parseFloat(r["مبلغ الدفعة الاولى"]||r["مبلغ الدفعة الأولى"]||0))} ر.ق</td>
       <td><span class="badge ${stCls}">${r["حالة المشروع"]||'نشط'}</span></td>
@@ -1527,7 +1551,7 @@ function renderRevenueDetailsReport(){
     const amount=parseFloat(r["مبلغ المشروع"]||0);
     total+=amount;
     html+=`<tr>
-      <td>${r["تاريخ السند"]||'-'}</td>
+      <td>${getRecordDate(r)||'-'}</td>
       <td>${r["اسم العميل"]||'-'}</td>
       <td>${r["البيان"]||'-'}</td>
       <td>${r.sheet||'-'}</td>
@@ -1604,7 +1628,7 @@ function exportFullExcelReport(){
   const clientData=getRevenueRows().map(r=>({
     "العميل":r["اسم العميل"]||'-',
     "المشروع":r["البيان"]||'-',
-    "رقم المشروع":r["رقم المشروع"]||'-',
+    "رقم العقار":r["رقم العقار"]||'-',
     "قيمة المشروع":parseFloat(r["مبلغ المشروع"]||0),
     "الدفعة الأولى":parseFloat(r["مبلغ الدفعة الاولى"]||r["مبلغ الدفعة الأولى"]||0),
     "الحالة":r["حالة المشروع"]||'نشط',
@@ -1613,7 +1637,7 @@ function exportFullExcelReport(){
   if(clientData.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(clientData),'العملاء والمشاريع');
   // ورقة الإيرادات
   const revenueData=getRevenueRows().map(r=>({
-    "التاريخ":r["تاريخ السند"]||'-',
+    "التاريخ":getRecordDate(r)||'-',
     "العميل":r["اسم العميل"]||'-',
     "البيان":r["البيان"]||'-',
     "نوع الإيراد":r.sheet||'-',
@@ -1674,7 +1698,7 @@ function exportFullPDFReport(){
     @media print{body{padding:10px;}}
   </style></head><body>
   <h1>🌊 المحيط للحسابات – التقرير الاحترافي الشامل</h1>
-  <div class="sub">تاريخ الإصدار: ${new Date().toLocaleDateString('ar-SA',{year:'numeric',month:'long',day:'numeric'})}</div>
+  <div class="sub">تاريخ الإصدار: ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
   <div class="kpis">
     <div class="kpi rev"><div class="lbl">إجمالي الإيرادات</div><div class="val">${fmt(totalRevenue)} ر.ق</div></div>
     <div class="kpi exp"><div class="lbl">إجمالي المصروفات</div><div class="val">${fmt(totalExpenses)} ر.ق</div></div>
@@ -1755,7 +1779,7 @@ function exportFiltered(){
   const sn=gv('expSheet');const sh=SD[sn];if(!sh)return;
   const df=gv('expFrom'),dt=gv('expTo');
   let rows=[...sh.rows];
-  if(df||dt)rows=rows.filter(r=>{const dv=r["تاريخ السند"]||r["التاريخ"]||'';if(df&&dv<df)return false;if(dt&&dv>dt)return false;return true;});
+  if(df||dt)rows=rows.filter(r=>{const dv=getRecordDate(r)||r["التاريخ"]||'';if(df&&dv<df)return false;if(dt&&dv>dt)return false;return true;});
   const wb=XLSX.utils.book_new();
   const data=[sh.columns,...rows.map(r=>sh.columns.map(c=>r[c]||''))];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(data),sn.substring(0,31));
@@ -1797,7 +1821,7 @@ function exportPDF(){
     @media print{body{padding:10px;}}
   </style></head><body>
   <h1>🌊 المحيط للحسابات</h1>
-  <div class="sub">تقرير مالي شامل – تاريخ الإصدار: ${new Date().toLocaleDateString('ar-SA',{year:'numeric',month:'long',day:'numeric'}).replace(/[\u0660-\u0669]/g,d=>String.fromCharCode(d.charCodeAt(0)-0x0660+48))}</div>
+  <div class="sub">تقرير مالي شامل – تاريخ الإصدار: ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
   <div class="kpis">
     <div class="kpi rev"><div class="lbl">إجمالي الإيرادات</div><div class="val">${fmt(rev)} ر.ق</div></div>
     <div class="kpi exp"><div class="lbl">إجمالي المصروفات</div><div class="val">${fmt(exp)} ر.ق</div></div>
@@ -1835,7 +1859,7 @@ function buildSearchIndex(){
   const idx=[];
   revSheets.forEach(s=>SD[s]?.rows.forEach(r=>{
     const name=r["اسم العميل"]||'';
-    const proj=r["رقم المشروع"]||'';
+    const proj=r["رقم العقار"]||'';
     if(name||proj)idx.push({name,sub:`${s} | ${proj} | ${fmt(r["مبلغ المشروع"]||0)} ر.ق`,sheet:s});
   }));
   return idx;
@@ -1911,23 +1935,24 @@ function isFirebaseConfigIncomplete(config){
   return bad.some(v => !v || v.toString().includes('تم حذف') || v.toString().includes('your_'));
 }
 
-function initFirebase(){
+async function initFirebase(){
   try{
     if(isFirebaseConfigIncomplete(FIREBASE_CONFIG)){
       fbReady=false;
+      fbDB=null;
       showSyncBadge('💾 تخزين محلي','#6b7280');
-      return;
+      return false;
     }
     if(!firebase?.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
     fbDB = firebase.firestore();
-    // اختبار سريع للاتصال بـFirestore
-    fbDB.doc(FB_DOC_PATH).get().then(snap=>{
+    try{
+      await fbDB.doc(FB_DOC_PATH).get();
       fbReady=true;
       showSyncBadge('☁️ Firebase متصل','#10b981');
-    }).catch(e=>{
+      return true;
+    }catch(e){
       fbReady=false;
       fbDB=null;
-      // إذا كانت قاعدة البيانات غير موجودة، نعمل محلياً بصمت
       if(e.code==='not-found'||e.message?.includes('does not exist')){
         showSyncBadge('💾 تخزين محلي (Firebase غير مهيأ)','#6b7280');
         console.info('Firestore database not found – using localStorage. To enable cloud sync, create a Firestore database at https://console.cloud.google.com/datastore/setup?project=almuhhet-accounting');
@@ -1935,11 +1960,13 @@ function initFirebase(){
         showSyncBadge('💾 تخزين محلي (غير متصل)','#6b7280');
         console.info('Firebase unreachable – using localStorage fallback.');
       }
-    });
+      return false;
+    }
   }catch(e){
     fbReady=false;
     fbDB=null;
     showSyncBadge('💾 تخزين محلي','#6b7280');
+    return false;
   }
 }
 
@@ -1994,7 +2021,7 @@ async function loadFromStorage(){
         sheetNames.forEach(n=>{
           if(saved[n]?.rows){ SD[n].rows=saved[n].rows; renumber(n); }
         });
-        loadFileStore();
+        await loadFileStore();
         renderDash(); updateBadges();
         showSyncBadge('☁️ تم التحميل من السحابة','#3b82f6');
         return true;
@@ -2012,6 +2039,7 @@ async function loadFromStorage(){
     sheetNames.forEach(n=>{
       if(saved[n]?.rows){ SD[n].rows=saved[n].rows; renumber(n); }
     });
+    await loadFileStore();
     return true;
   }catch(e){ return false; }
 }
@@ -2184,7 +2212,7 @@ function renderClientStatement(){
       projHtml+=`<div class="stmt-proj">
         <div class="stmt-proj-hdr">
           <div>
-            <span class="stmt-proj-title">📁 ${r["رقم المشروع"]||'—'} – ${r["البيان"]||'—'}</span>
+            <span class="stmt-proj-title">📁 ${r["رقم العقار"]||'—'} – ${r["البيان"]||'—'}</span>
             <span class="badge ${stCls}" style="margin-right:8px;font-size:.65rem;">${r["حالة المشروع"]||'نشط'}</span>
           </div>
           <div style="font-size:.8rem;color:var(--green);font-weight:700;">${fmt(projAmt)} ر.ق</div>
@@ -2248,21 +2276,20 @@ renderExport = function(){
   else if (b) b.style.display = 'none';
 };
 
-function init(){
+async function init(){
   loadDarkMode();
   initData();
-  loadFileStore();
   g('todayDate').textContent=today();
   initSearch();
-  initFirebase();
+  await initFirebase();
+  await loadFileStore();
   // حفظ تلقائي كل 5 دقائق للتأكد من عدم ضياع البيانات
   setInterval(()=>{ if(fbReady) saveToStorage(); }, 5*60*1000);
-  loadFromStorage().then(hadSaved=>{
-    renderDash();
-    updateBadges();
-    initNotifications();
-    if(!hadSaved) saveToStorage();
-  });
+  const hadSaved = await loadFromStorage();
+  renderDash();
+  updateBadges();
+  initNotifications();
+  if(!hadSaved) saveToStorage();
 }
 initAuth();
 
