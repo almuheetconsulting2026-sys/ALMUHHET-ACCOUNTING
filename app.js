@@ -1991,7 +1991,10 @@ function showSyncBadge(msg,color){
 
 /* ── حفظ البيانات (Firebase أولاً – نسخة محلية احتياطية) ── */
 async function saveToStorage(){
-  // Firebase هو المصدر الأساسي للبيانات السحابية
+  const serializedSD = JSON.stringify(SD);
+  // Always keep a local backup first so data survives refresh even if cloud sync is slow.
+  try{ localStorage.setItem(STORAGE_KEY, serializedSD); }catch(e){}
+
   if(fbReady && fbDB){
     try{
       const cleanSD = {};
@@ -2001,16 +2004,14 @@ async function saveToStorage(){
           rows: (SD[n]?.rows||[]).map(r => ({...r}))
         };
       });
-      await fbDB.doc(FB_DOC_PATH).set({data: JSON.stringify(cleanSD), updated: Date.now()});
+      await fbDB.doc(FB_DOC_PATH).set({data: serializedSD, updated: Date.now()});
       showSyncBadge('☁️ تم الحفظ في السحابة','#10b981');
-      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SD)); }catch(e){}
       return;
     }catch(e){
       fbReady=false; fbDB=null;
+      showSyncBadge('💾 فشل مزامنة السحابة – تم الحفظ محلياً','#d97706');
     }
   }
-  // احتياطي: localStorage
-  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SD)); }catch(e){}
 }
 
 /* ── تحميل البيانات ── */
@@ -2294,6 +2295,11 @@ async function init(){
   initNotifications();
   if(!hadSaved) saveToStorage();
 }
+window.addEventListener('beforeunload', ()=>{
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(SD)); }catch(e){}
+  try{ localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE)); }catch(e){}
+});
+
 initAuth().catch(console.error);
 
 // Expose commonly used functions to `window` for inline HTML handlers
