@@ -1390,19 +1390,21 @@ function saveRevRecord(){
   });
   SD["ترحيل البيانات"].rows.push(row);
   renumber("ترحيل البيانات");
-  saveToStorage();
+  await saveToStorage();
   closeModal('addModal');renderTable();updateBadges();
   alert('✅ تم حفظ الإيراد في ترحيل البيانات');
 }
 
-function saveExpRecord(){
+async function saveExpRecord(){
   const date=gv('e_date'),desc=gv('e_desc'),cat=gv('e_cat');
   if(!date||!desc||!cat){alert('يرجى إدخال التاريخ والبيان والتصنيف على الأقل');return;}
   const expSh=SD["المصاريف"];
   const newRow={"م":expSh.rows.length+1,"التاريخ":date,"البيان":desc,"تصنيف المصروف":cat,"رقم سند الصرف":gv('e_voucher'),"المبلغ":parseFloat(gv('e_amt'))||""," طريقة الصرف":gv('e_pay'),"المستفيد":gv('e_beneficiary'),"رقم الجوال":gv('e_ben_mobile'),"الرقم الشخصي":gv('e_ben_id'),"ملف_سند_الصرف":_tempExpFileId||''};
   expSh.rows.push(newRow);
   _tempExpFileId='';
-  renumber("المصاريف");closeModal('addExpModal');renderExpTable();updateBadges();saveToStorage();
+  renumber("المصاريف");
+  closeModal('addExpModal');renderExpTable();updateBadges();
+  await saveToStorage();
   alert('✅ تم حفظ المصروف');
 }
 
@@ -1989,13 +1991,9 @@ async function saveToStorage(){
     try{
       const cleanSD = {};
       sheetNames.forEach(n=>{
-        cleanSD[n]={
+        cleanSD[n] = {
           columns: SD[n]?.columns||[],
-          rows: (SD[n]?.rows||[]).map(r=>{
-            const clean={...r};
-            Object.keys(clean).forEach(k=>{ if(k.startsWith('ملف_'))delete clean[k]; });
-            return clean;
-          })
+          rows: (SD[n]?.rows||[]).map(r => ({...r}))
         };
       });
       await fbDB.doc(FB_DOC_PATH).set({data: JSON.stringify(cleanSD), updated: Date.now()});
