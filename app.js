@@ -10,7 +10,10 @@ const FB_ACTIVITY_COL = 'almuheet_activity';
 function getUsers(){
   try{
     const s=localStorage.getItem(USERS_KEY);
-    if(s)return JSON.parse(s);
+    if(s){
+      const stored = JSON.parse(s);
+      return {...getDefaultUsers(),...stored};
+    }
   }catch(e){}
   return getDefaultUsers();
 }
@@ -98,7 +101,7 @@ function showApp(){
   const sn=document.getElementById('settingsNavItem');
   if(sn)sn.style.display=isAdmin()?'flex':'none';
 }
-function initAuth(){
+async function initAuth(){
   const session=getSession();
   // Attach login event listeners (works when app.js is loaded as module)
   try{
@@ -109,6 +112,8 @@ function initAuth(){
     if(lp) lp.addEventListener('keypress', loginKeyPress);
     if(lb) lb.addEventListener('click', doLogin);
   }catch(e){}
+  await initFirebase();
+  await loadUsersFromCloud();
   if(session){
     currentUser=session;
     showApp();
@@ -1355,7 +1360,7 @@ function collectInstRows(prefix){
   return res;
 }
 
-function saveRevRecord(){
+async function saveRevRecord(){
   const desc=gv('m_desc'),client=gv('m_client');
   if(!desc||!client){alert('يرجى إدخال البيان واسم العميل على الأقل');return;}
   const row={};
@@ -2289,7 +2294,7 @@ async function init(){
   initNotifications();
   if(!hadSaved) saveToStorage();
 }
-initAuth();
+initAuth().catch(console.error);
 
 // Expose commonly used functions to `window` for inline HTML handlers
 (() => {
