@@ -1,4 +1,19 @@
 // ═══════════════════════════════════════════
+// SAFE JSON PARSE HELPER
+// ═══════════════════════════════════════════
+// Supabase sometimes returns already-parsed objects instead of JSON strings.
+// This helper handles both cases safely.
+function safeJsonParse(val){
+  if(val===null||val===undefined)return null;
+  if(typeof val==='object')return val;  // already parsed by Supabase
+  if(typeof val==='string'){
+    if(!val.trim())return null;
+    try{return JSON.parse(val);}catch(e){console.warn('safeJsonParse error:',e,val?.substring?.(0,80));return null;}
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════
 // AUTHENTICATION & USERS SYSTEM
 // ═══════════════════════════════════════════
 const AUTH_KEY   = 'ALMUHHET_SESSION';
@@ -38,9 +53,13 @@ async function loadUsersFromCloud(){
   if(!sbReady||!sbClient)return;
   try{
     const { data, error } = await sbClient.from(SB_USERS_TABLE).select('*').single();
+    if(error && error.code!=='PGRST116'){
+      console.warn('Users load error:',error);
+      return;
+    }
     if(data && data.users){
-      const users = JSON.parse(data.users);
-      if(Object.keys(users).length>0){
+      const users = safeJsonParse(data.users);
+      if(users && Object.keys(users).length>0){
         localStorage.setItem(USERS_KEY,JSON.stringify(users));
       }
     }
@@ -2112,7 +2131,8 @@ async function initSupabase(){
             try{
               const data = payload.new;
               if(data && data.data){
-                const parsed = JSON.parse(data.data);
+                const parsed = safeJsonParse(data.data);
+                if(!parsed){console.warn('Realtime: could not parse data');return;}
                 sheetNames.forEach(n=>{
                   if(parsed[n]?.rows){
                     if(!SD[n]) SD[n] = { columns: [], rows: [] };
@@ -2137,7 +2157,9 @@ async function initSupabase(){
             try{
               const data = payload.new;
               if(data && data.files){
-                FILE_STORE = JSON.parse(data.files);
+                const parsedFiles = safeJsonParse(data.files);
+                if(!parsedFiles){console.warn('Realtime files: could not parse');return;}
+                FILE_STORE = parsedFiles;
                 localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE));
                 renderArchiveCounts();
                 showSyncBadge('☁️ الأرشيف محدث','#3b82f6');
@@ -2262,7 +2284,8 @@ async function loadFromStorage(){
         sbReady=false;
       } else if(data && data.data){
         try{
-          const saved = JSON.parse(data.data);
+          const saved = safeJsonParse(data.data);
+          if(!saved){console.warn('Supabase data is empty or unparseable');sbReady=false;return false;}
           sheetNames.forEach(n=>{
             if(saved[n]?.rows){
               if(!SD[n]) SD[n] = { columns: [], rows: [] };
@@ -2550,7 +2573,7 @@ async function init(){
   initData();
   g('todayDate').textContent=today();
   initSearch();
-  await initSupabase();
+  // initSupabase() already called in initAuth() – skip to avoid Multiple GoTrueClient warning
   await loadFileStore();
   // حفظ تلقائي كل 5 دقائق للتأكد من عدم ضياع البيانات
   setInterval(()=>{ if(sbReady) saveToStorage(); }, 5*60*1000);
