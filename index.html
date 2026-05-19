@@ -13,9 +13,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
 <!-- Styles -->
 <link rel="stylesheet" href="styles.css">
@@ -113,7 +112,7 @@
       <div class="notif-btn" title="التنبيهات" onclick="goPage('alerts')">🔔<div class="notif-dot" id="notifDot" style="display:none"></div></div>
       <div id="fbTopStatus" style="margin-left:12px;padding:6px 10px;border-radius:12px;background:#efefef;color:#0b1220;font-size:.8rem;display:flex;align-items:center;gap:8px;">
         <span id="fbTopDot" style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block;"></span>
-        <span id="fbTopText">جاري الاتصال...</span>
+        <span id="fbTopText">☁️ Supabase متصل</span>
       </div>
     </div>
   </div>
@@ -691,7 +690,7 @@
             <button class="btn btn-outline btn-sm" onclick="requestNotifPermission()">🔔 تفعيل التنبيهات</button>
           </div>
           <div class="settings-toggle-row">
-            <div><div class="str-label">المزامنة السحابية</div><div class="str-sub">Firebase Firestore</div></div>
+            <div><div class="str-label">المزامنة السحابية</div><div class="str-sub">Supabase</div></div>
             <button class="btn btn-outline btn-sm" onclick="saveToStorage().then(()=>showToast('✅ تمت المزامنة','success'))">☁️ مزامنة الآن</button>
           </div>
         </div>
@@ -716,10 +715,9 @@
         <!-- System Info -->
         <div class="settings-card">
           <h3>ℹ️ معلومات النظام</h3>
-          <div class="settings-info-row"><span class="sir-label">حالة Firebase</span><span id="settingsFbStatus">—</span></div>
+          <div class="settings-info-row"><span class="sir-label">حالة Supabase</span><span id="settingsFbStatus">—</span></div>
           <div class="settings-info-row"><span class="sir-label">إجمالي السجلات</span><span class="sir-val" id="settingsTotalRows">—</span></div>
           <div class="settings-info-row"><span class="sir-label">عدد المستخدمين</span><span class="sir-val" id="settingsUsersCount2">—</span></div>
-          <div class="settings-info-row"><span class="sir-label">مشروع Firebase</span><span class="sir-val">almuhhet-accounting</span></div>
           <div class="settings-info-row"><span class="sir-label">إصدار النظام</span><span class="sir-val" id="settingsVersion">v2.0 – 2026</span></div>
           <div class="settings-info-row"><span class="sir-label">المستخدم الحالي</span><span class="sir-val" id="settingsCurrentUser">—</span></div>
         </div>
@@ -808,7 +806,7 @@
 <div id="blockerHelpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;">
   <div style="background:#fff;padding:18px;border-radius:12px;max-width:760px;margin:0 16px;text-align:right;direction:rtl;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <h3>مساعدة: كيف توقف حجب Firebase</h3>
+      <h3>مساعدة: كيف توقف حجب Supabase</h3>
       <button onclick="hideBlockerHelp()" style="background:none;border:none;font-size:20px">✕</button>
     </div>
     <div style="max-height:60vh;overflow:auto;font-size:0.95rem;color:#111;">
@@ -829,16 +827,11 @@
   </div>
 </div>
 
-<!-- Main Firebase Config -->
+<!-- Main Supabase Config -->
 <script>
-  window.FIREBASE_CONFIG = {
-    apiKey: "AIzaSyDUwgRv35xC-Ppai5-urZvNPamKR8E8-CA",
-    authDomain: "almuhhet-accounting.firebaseapp.com",
-    projectId: "almuhhet-accounting",
-    storageBucket: "almuhhet-accounting.firebasestorage.app",
-    messagingSenderId: "574319906803",
-    appId: "1:574319906803:web:8c1c4941c11c3959bd4c86",
-    measurementId: "G-XGQWD4NN8Z"
+  window.SUPABASE_CONFIG = {
+    url: window.SUPABASE_ENV?.VITE_SUPABASE_URL || "https://povqlnakcnsbodaxufep.supabase.co",
+    key: window.SUPABASE_ENV?.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdnFsbmFrY25zYm9kYXh1ZmVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMTQyOTIsImV4cCI6MjA5NDY5MDI5Mn0.zO8ey7frwy4Nvcui_HZv1L__vhp9eU5dOB4wAVv-eOo"
   };
 </script>
 

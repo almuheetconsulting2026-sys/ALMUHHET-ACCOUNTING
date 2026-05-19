@@ -28,18 +28,18 @@ function getDefaultUsers(){
 function saveUsers(u){
   localStorage.setItem(USERS_KEY,JSON.stringify(u));
   // حفظ سحابي
-  if(typeof fbDB!=='undefined'&&fbDB&&typeof fbReady!=='undefined'&&fbReady){
-    fbDB.doc(FB_USERS_DOC).set({users:JSON.stringify(u),updated:Date.now()}).catch(e=>console.warn('Users save error:',e));
+  if(sbReady&&sbClient){
+    sbClient.from(SB_USERS_TABLE).upsert({id:1, users:JSON.stringify(u), updated:Date.now()}).catch(e=>console.warn('Users save error:',e));
   }
 }
 
-// ── تحميل المستخدمين من Firebase ──
+// ── تحميل المستخدمين من Supabase ──
 async function loadUsersFromCloud(){
-  if(!fbReady||!fbDB)return;
+  if(!sbReady||!sbClient)return;
   try{
-    const snap=await fbDB.doc(FB_USERS_DOC).get();
-    if(snap.exists){
-      const users=JSON.parse(snap.data().users||'{}');
+    const { data, error } = await sbClient.from(SB_USERS_TABLE).select('*').single();
+    if(data && data.users){
+      const users = JSON.parse(data.users);
       if(Object.keys(users).length>0){
         localStorage.setItem(USERS_KEY,JSON.stringify(users));
       }
@@ -112,7 +112,7 @@ async function initAuth(){
     if(lp) lp.addEventListener('keypress', loginKeyPress);
     if(lb) lb.addEventListener('click', doLogin);
   }catch(e){}
-  await initFirebase();
+  await initSupabase();
   await loadUsersFromCloud();
   if(session){
     currentUser=session;
@@ -245,7 +245,7 @@ function doSaveUser(){
 // ACTIVITY LOG SYSTEM – سجل النشاط
 // ═══════════════════════════════════════════
 async function logActivity(action, details){
-  if(!fbReady||!fbDB||!currentUser)return;
+  if(!sbReady||!sbClient||!currentUser)return;
   try{
     const entry={
       user: currentUser.username,
@@ -256,28 +256,27 @@ async function logActivity(action, details){
       timestamp: Date.now(),
       date: new Date().toLocaleString('en-US',{timeZone:'Asia/Riyadh'})
     };
-    await fbDB.collection(FB_ACTIVITY_COL).add(entry);
+    await sbClient.from(SB_ACTIVITY_TABLE).insert(entry);
   }catch(e){ console.warn('Activity log error:',e); }
 }
 
 async function loadActivityLog(limit=100){
-  if(!fbReady||!fbDB)return[];
+  if(!sbReady||!sbClient)return[];
   try{
-    const snap=await fbDB.collection(FB_ACTIVITY_COL)
-      .orderBy('timestamp','desc')
-      .limit(limit)
-      .get();
-    return snap.docs.map(d=>({id:d.id,...d.data()}));
+    const { data, error } = await sbClient
+      .from(SB_ACTIVITY_TABLE)
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(limit);
+    return data || [];
   }catch(e){ console.warn('Activity load error:',e); return[]; }
 }
 
 async function clearActivityLog(){
-  if(!fbReady||!fbDB)return;
+  if(!sbReady||!sbClient)return;
   try{
-    const snap=await fbDB.collection(FB_ACTIVITY_COL).get();
-    const batch=fbDB.batch();
-    snap.docs.forEach(d=>batch.delete(d.ref));
-    await batch.commit();
+    const { error } = await sbClient.from(SB_ACTIVITY_TABLE).delete().neq('id', 0);
+    if(error) throw error;
   }catch(e){ console.warn('Clear activity error:',e); }
 }
 
@@ -362,7 +361,7 @@ function renderSettings(){
   const sc=document.getElementById('settingsUsersContainer');
   if(sc)sc.innerHTML=usersHtml;
   const fb=document.getElementById('settingsFbStatus');
-  if(fb)fb.innerHTML=fbReady?'<span class="sir-val green">🟢 متصل بـ Firebase</span>':'<span class="sir-val red">🔴 غير متصل – تخزين محلي</span>';
+  if(fb)fb.innerHTML=sbReady?'<span class="sir-val green">🟢 متصل بـ Supabase</span>':'<span class="sir-val red">🔴 غير متصل – تخزين محلي</span>';
   const isDark=document.body.classList.contains('dark-mode');
   const dt=document.getElementById('settingsDarkBtn');
   if(dt)dt.textContent=isDark?'☀️ تفعيل الوضع الفاتح':'🌙 تفعيل الوضع الداكن';
@@ -413,7 +412,7 @@ function settingsRestore(){
 
 function settingsClearAllData(){
   if(!confirm('⚠️ هل أنت متأكد؟ سيتم حذف جميع البيانات نهائياً من السحابة والجهاز ولا يمكن التراجع!'))return;
-  if(!confirm('تأكيد نهائي: حذف كل البيانات من Firebase وكل الأجهزة؟'))return;
+  if(!confirm('تأكيد نهائي: حذف كل البيانات من Supabase وكل الأجهزة؟'))return;
   sheetNames.forEach(n=>{SD[n]={columns:SD[n]?.columns||[],rows:[]};});
   FILE_STORE={};
   // مسح السحابة
@@ -515,21 +514,21 @@ function getRecordDate(r){
 // ═══════════════════════════════════════════
 async function saveFileStore(){
   try{localStorage.setItem(FILE_STORE_KEY,JSON.stringify(FILE_STORE));}catch(e){console.warn('File store save failed:',e);}
-  if(typeof fbDB!=='undefined'&&fbDB&&fbReady){
-    try{await fbDB.doc(FB_FILES_DOC).set({files:JSON.stringify(FILE_STORE),updated:Date.now()});}catch(e){console.warn('FB file store save error:',e);}
+  if(sbReady&&sbClient){
+    try{await sbClient.from(SB_FILES_TABLE).upsert({id:1, files:JSON.stringify(FILE_STORE), updated:Date.now()});}catch(e){console.warn('SB file store save error:',e);}
   }
   renderArchiveCounts();
 }
 async function loadFileStore(){
   FILE_STORE={};
   try{const raw=localStorage.getItem(FILE_STORE_KEY);if(raw)FILE_STORE=JSON.parse(raw);}catch(e){FILE_STORE={};}
-  if(typeof fbDB!=='undefined'&&fbDB&&fbReady){
+  if(sbReady&&sbClient){
     try{
-      const snap = await fbDB.doc(FB_FILES_DOC).get();
-      if(snap.exists){
-        try{FILE_STORE=JSON.parse(snap.data().files||'{}');localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE));}catch(e){}
+      const { data, error } = await sbClient.from(SB_FILES_TABLE).select('*').single();
+      if(data && data.files){
+        try{FILE_STORE=JSON.parse(data.files);localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE));}catch(e){}
       }
-    }catch(e){console.warn('FB file store load error:',e);}
+    }catch(e){console.warn('SB file store load error:',e);}
   }
 }
 function fileToBase64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);});}
@@ -836,7 +835,7 @@ function initData(){
   // تهيئة الأوراق بدون بيانات تجريبية – النظام يبدأ فارغاً
   SD["ترحيل البيانات"]={columns:masterCols,rows:[]};
   sheetNames.slice(1).forEach(n=>SD[n]={columns:getSheetCols(n),rows:[]});
-  // لا توجد بيانات مسبقة – كل البيانات تُدخل من المستخدم وتُحفظ سحابياً في Firebase
+  // لا توجد بيانات مسبقة – كل البيانات تُدخل من المستخدم وتُحفظ سحابياً في Supabase
 }
 
 // ═══════════════════════════════════════════
@@ -1940,153 +1939,140 @@ function loadDarkMode(){
 const STORAGE_KEY='almuheet_data_v2';
 
 // ═══════════════════════════════════════════
-// FIREBASE CONFIG - استخدم متغيرات البيئة
+// SUPABASE CONFIG - استخدم متغيرات البيئة
 // ═══════════════════════════════════════════
 // 🔒 أضف المفاتيح الجديدة في .env بدلاً من هنا
 // نسخة احتياطية: الملف .env.example يحتوي على النموذج
-const FIREBASE_ENV = window.FIREBASE_ENV || {};
+const SUPABASE_ENV = window.SUPABASE_ENV || {};
 
-const FIREBASE_CONFIG = window.FIREBASE_CONFIG || {
-  apiKey:            FIREBASE_ENV.VITE_FIREBASE_API_KEY || "تم حذف المفتاح القديم",
-  authDomain:        FIREBASE_ENV.VITE_FIREBASE_AUTH_DOMAIN || "almuhhet-accounting.firebaseapp.com",
-  projectId:         FIREBASE_ENV.VITE_FIREBASE_PROJECT_ID || "almuhhet-accounting",
-  storageBucket:     FIREBASE_ENV.VITE_FIREBASE_STORAGE_BUCKET || "almuhhet-accounting.firebasestorage.app",
-  messagingSenderId: FIREBASE_ENV.VITE_FIREBASE_MESSAGING_SENDER_ID || "تم حذف المفتاح القديم",
-  appId:             FIREBASE_ENV.VITE_FIREBASE_APP_ID || "تم حذف المفتاح القديم"
+const SUPABASE_CONFIG = window.SUPABASE_CONFIG || {
+  url:  SUPABASE_ENV.VITE_SUPABASE_URL || "https://your-project.supabase.co",
+  key:  SUPABASE_ENV.VITE_SUPABASE_ANON_KEY || "your-anon-key-here"
 };
-const FB_DOC_PATH = "almuheet/data";      // مسار المستند في Firestore
-const FB_FILES_DOC = "almuheet/files";   // مسار ملفات الأرشيف
-let   fbReady = false;
-let   fbDB    = null;
-let   fbDataUnsub = null;
-let   fbFilesUnsub = null;
+const SB_DATA_TABLE = "almuheet_data";      // جدول البيانات الرئيسي
+const SB_FILES_TABLE = "almuheet_files";   // جدول ملفات الأرشيف
+const SB_USERS_TABLE = "almuheet_users";   // جدول المستخدمين
+const SB_ACTIVITY_TABLE = "almuheet_activity"; // جدول سجل النشاط
+let   sbReady = false;
+let   sbClient = null;
+let   sbDataSub = null;
+let   sbFilesSub = null;
 
-function isFirebaseConfigIncomplete(config){
-  const bad = [config.apiKey, config.authDomain, config.projectId, config.storageBucket, config.messagingSenderId, config.appId];
-  return bad.some(v => !v || v.toString().includes('تم حذف') || v.toString().includes('your_'));
+function isSupabaseConfigIncomplete(config){
+  const bad = [config.url, config.key];
+  return bad.some(v => !v || v.toString().includes('your-') || v.toString().includes('https://your-project'));
 }
 
-async function initFirebase(){
+async function initSupabase(){
   try{
-    if(isFirebaseConfigIncomplete(FIREBASE_CONFIG)){
-      fbReady=false;
-      fbDB=null;
+    if(isSupabaseConfigIncomplete(SUPABASE_CONFIG)){
+      sbReady=false;
+      sbClient=null;
       showSyncBadge('💾 تخزين محلي','#6b7280');
       return false;
     }
-    if(!firebase?.apps?.length) firebase.initializeApp(FIREBASE_CONFIG);
-    fbDB = firebase.firestore();
+    sbClient = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.key);
     try{
-      await fbDB.doc(FB_DOC_PATH).get();
-      fbReady=true;
-      showSyncBadge('☁️ Firebase متصل','#10b981');
+      // Test connection
+      const { error } = await sbClient.from(SB_DATA_TABLE).select('id').limit(1);
+      if(error && error.code !== 'PGRST116') throw error;
+      
+      sbReady=true;
+      showSyncBadge('☁️ Supabase متصل','#10b981');
+      try{ updateTopbarSync(true, Date.now()); }catch(e){}
+      // Update settings status
+      const fb=document.getElementById('settingsFbStatus');
+      if(fb)fb.innerHTML='<span class="sir-val green">🟢 متصل بـ Supabase</span>';
 
-      // Real-time listeners: data doc
+      // Real-time listeners: data table
       try{
-        if(fbDataUnsub) fbDataUnsub();
-        fbDataUnsub = fbDB.doc(FB_DOC_PATH).onSnapshot(async snap=>{
-          if(!snap.exists) return;
-          try{
-            const payload = JSON.parse(snap.data().data||'{}');
-            // Merge incoming rows without clobbering local structure
-            sheetNames.forEach(n=>{
-              if(payload[n]?.rows){
-                if(!SD[n]) SD[n] = { columns: [], rows: [] };
-                SD[n].rows = payload[n].rows;
-                renumber(n);
+        if(sbDataSub) sbDataSub.unsubscribe();
+        sbDataSub = sbClient.channel(SB_DATA_TABLE)
+          .on('postgres_changes', { event: '*', schema: 'public', table: SB_DATA_TABLE }, async payload => {
+            try{
+              const data = payload.new;
+              if(data && data.data){
+                const parsed = JSON.parse(data.data);
+                sheetNames.forEach(n=>{
+                  if(parsed[n]?.rows){
+                    if(!SD[n]) SD[n] = { columns: [], rows: [] };
+                    SD[n].rows = parsed[n].rows;
+                    renumber(n);
+                  }
+                });
+                await loadFileStore(); renderDash(); updateBadges();
+                showSyncBadge('☁️ تم التحديث من السحابة','#3b82f6');
+                try{ updateTopbarSync(true, Date.now()); }catch(e){}
               }
-            });
-            await loadFileStore(); renderDash(); updateBadges();
-            showSyncBadge('☁️ تم التحديث من السحابة','#3b82f6');
-            try{ updateTopbarSync(true, Date.now()); }catch(e){}
-          }catch(err){console.warn('Realtime data parse error',err)}
-        },err=>{console.warn('Data onSnapshot error',err);});
+            }catch(err){console.warn('Realtime data parse error',err)}
+          })
+          .subscribe();
       }catch(err){console.warn('Failed to attach data listener',err)}
 
-      // Real-time listeners: files doc
+      // Real-time listeners: files table
       try{
-        if(fbFilesUnsub) fbFilesUnsub();
-        fbFilesUnsub = fbDB.doc(FB_FILES_DOC).onSnapshot(snap=>{
-          if(!snap.exists) return;
-          try{ FILE_STORE = JSON.parse(snap.data().files||'{}'); localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE)); renderArchiveCounts(); showSyncBadge('☁️ الأرشيف محدث','#3b82f6'); }catch(err){console.warn('Realtime files parse error',err)}
-        },err=>{console.warn('Files onSnapshot error',err);});
+        if(sbFilesSub) sbFilesSub.unsubscribe();
+        sbFilesSub = sbClient.channel(SB_FILES_TABLE)
+          .on('postgres_changes', { event: '*', schema: 'public', table: SB_FILES_TABLE }, payload => {
+            try{
+              const data = payload.new;
+              if(data && data.files){
+                FILE_STORE = JSON.parse(data.files);
+                localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE));
+                renderArchiveCounts();
+                showSyncBadge('☁️ الأرشيف محدث','#3b82f6');
+              }
+            }catch(err){console.warn('Realtime files parse error',err)}
+          })
+          .subscribe();
       }catch(err){console.warn('Failed to attach files listener',err)}
 
       return true;
     }catch(e){
-      fbReady=false;
-      fbDB=null;
-      // Attempt to detect whether the failure is due to client-side blocking (AdBlock/uBlock/etc.)
-      try{
-        const blocked = await detectFirestoreBlock();
-        if(blocked){
-          showSyncBadge('🚫 تم حظر Firebase — تحقق من إضافات الحظر','#ef4444');
-          console.warn('Firestore requests appear to be blocked by client (AdBlock/uBlock).', e);
-          return false;
-        }
-      }catch(err){
-        console.warn('Error during firestore block detection:',err);
-      }
-      if(e.code==='not-found'||e.message?.includes('does not exist')){
-        showSyncBadge('💾 تخزين محلي (Firebase غير مهيأ)','#6b7280');
-        console.info('Firestore database not found – using localStorage. To enable cloud sync, create a Firestore database at https://console.cloud.google.com/datastore/setup?project=almuhhet-accounting');
+      sbReady=false;
+      sbClient=null;
+      if(e.code==='PGRST116'||e.message?.includes('does not exist')){
+        showSyncBadge('💾 تخزين محلي (Supabase غير مهيأ)','#6b7280');
+        console.info('Supabase tables not found – using localStorage. To enable cloud sync, create tables at https://supabase.com/dashboard');
       } else {
         showSyncBadge('💾 تخزين محلي (غير متصل)','#6b7280');
-        console.info('Firebase unreachable – using localStorage fallback.');
+        console.info('Supabase unreachable – using localStorage fallback.');
       }
       return false;
     }
   }catch(e){
-    fbReady=false;
-    fbDB=null;
+    sbReady=false;
+    sbClient=null;
     showSyncBadge('💾 تخزين محلي','#6b7280');
     return false;
   }
 }
 
-// Try a lightweight fetch to Firestore host to see if requests are blocked by client.
-async function detectFirestoreBlock(){
-  try{
-    // A simple HEAD request; use mode 'no-cors' to avoid CORS failures turning into false negatives.
-    await fetch('https://firestore.googleapis.com/', {method:'HEAD', mode:'no-cors', cache:'no-store'});
-    // If fetch resolves, we can't be sure (opaque), assume not blocked
-    return false;
-  }catch(err){
-    const msg = (err && err.message) ? err.message.toString() : '';
-    if(msg.includes('blocked') || msg.includes('ERR_BLOCKED_BY_CLIENT') || msg.includes('net::ERR_BLOCKED_BY_CLIENT')) return true;
-    // If the fetch failed at network level, it *may* be blocked — return true to signal potential blocking.
-    return true;
-  }
-}
-
-// UI: blocker-help modal controls
-function showBlockerHelp(){
-  const m = document.getElementById('blockerHelpModal');
-  if(m) m.style.display = 'flex';
-}
-function hideBlockerHelp(){
-  const m = document.getElementById('blockerHelpModal');
-  if(m) m.style.display = 'none';
-}
-document.addEventListener('DOMContentLoaded', ()=>{
-  try{
-    const btn = document.getElementById('blockerHelpBtn');
-    if(btn) btn.addEventListener('click', showBlockerHelp);
-    const modal = document.getElementById('blockerHelpModal');
-    if(modal) modal.addEventListener('click', (ev)=>{ if(ev.target===modal) hideBlockerHelp(); });
-  }catch(e){console.warn('blocker help init failed',e)}
-});
 
 // When user returns to the tab or focuses window, refresh from cloud to reduce perceived delay
 let _lastSyncCheck = 0;
 document.addEventListener('visibilitychange', async ()=>{
   if(document.visibilityState==='visible'){
     const now=Date.now(); if(now-_lastSyncCheck<2000) return; _lastSyncCheck=now;
-    if(!fbReady && !isFirebaseConfigIncomplete(FIREBASE_CONFIG)) await initFirebase();
+    if(!sbReady && !isSupabaseConfigIncomplete(SUPABASE_CONFIG)) await initSupabase();
     await loadFromStorage();
   }
 });
-window.addEventListener('focus', async ()=>{ const now=Date.now(); if(now-_lastSyncCheck<2000) return; _lastSyncCheck=now; if(!fbReady && !isFirebaseConfigIncomplete(FIREBASE_CONFIG)) await initFirebase(); await loadFromStorage(); });
+window.addEventListener('focus', async ()=>{ const now=Date.now(); if(now-_lastSyncCheck<2000) return; _lastSyncCheck=now; if(!sbReady && !isSupabaseConfigIncomplete(SUPABASE_CONFIG)) await initSupabase(); await loadFromStorage(); });
+
+function updateTopbarSync(connected, lastSyncTime){
+  const dot = document.getElementById('fbTopDot');
+  const text = document.getElementById('fbTopText');
+  if(!dot || !text) return;
+  
+  if(connected){
+    dot.style.background = '#10b981'; // green
+    text.textContent = '☁️ Supabase متصل';
+  } else {
+    dot.style.background = '#ef4444'; // red
+    text.textContent = '💾 تخزين محلي';
+  }
+}
 
 function showSyncBadge(msg,color){
   let b=g('fbSyncBadge');
@@ -2100,13 +2086,13 @@ function showSyncBadge(msg,color){
   setTimeout(()=>b.style.opacity='0',3000);
 }
 
-/* ── حفظ البيانات (Firebase أولاً – نسخة محلية احتياطية) ── */
+/* ── حفظ البيانات (Supabase أولاً – نسخة محلية احتياطية) ── */
 async function saveToStorage(){
   const serializedSD = JSON.stringify(SD);
   // Always keep a local backup first so data survives refresh even if cloud sync is slow.
   try{ localStorage.setItem(STORAGE_KEY, serializedSD); }catch(e){}
 
-  if(fbReady && fbDB){
+  if(sbReady && sbClient){
     try{
       const cleanSD = {};
       sheetNames.forEach(n=>{
@@ -2115,12 +2101,12 @@ async function saveToStorage(){
           rows: (SD[n]?.rows||[]).map(r => ({...r}))
         };
       });
-      await fbDB.doc(FB_DOC_PATH).set({data: serializedSD, updated: Date.now()});
+      await sbClient.from(SB_DATA_TABLE).upsert({id:1, data: serializedSD, updated: Date.now()});
       showSyncBadge('☁️ تم الحفظ في السحابة','#10b981');
       try{ updateTopbarSync(true, Date.now()); }catch(e){}
       return;
     }catch(e){
-      fbReady=false; fbDB=null;
+      sbReady=false; sbClient=null;
       showSyncBadge('💾 فشل مزامنة السحابة – تم الحفظ محلياً','#d97706');
       try{ updateTopbarSync(false); }catch(err){}
     }
@@ -2129,12 +2115,12 @@ async function saveToStorage(){
 
 /* ── تحميل البيانات ── */
 async function loadFromStorage(){
-  // جرّب Firebase أولاً إذا كان متصلاً
-  if(fbReady && fbDB){
+  // جرّب Supabase أولاً إذا كان متصلاً
+  if(sbReady && sbClient){
     try{
-      const snap = await fbDB.doc(FB_DOC_PATH).get();
-      if(snap.exists){
-        const saved = JSON.parse(snap.data().data||'{}');
+      const { data, error } = await sbClient.from(SB_DATA_TABLE).select('*').single();
+      if(data && data.data){
+        const saved = JSON.parse(data.data);
         sheetNames.forEach(n=>{
           if(saved[n]?.rows){
             if(!SD[n]) SD[n] = { columns: [], rows: [] };
@@ -2149,8 +2135,8 @@ async function loadFromStorage(){
         return true;
       }
     }catch(e){
-      // Firebase فشل – نتحول لـlocalStorage بصمت
-      fbReady=false; fbDB=null;
+      // Supabase فشل – نتحول لـlocalStorage بصمت
+      sbReady=false; sbClient=null;
     }
   }
   // احتياطي: localStorage
@@ -2407,10 +2393,10 @@ async function init(){
   initData();
   g('todayDate').textContent=today();
   initSearch();
-  await initFirebase();
+  await initSupabase();
   await loadFileStore();
   // حفظ تلقائي كل 5 دقائق للتأكد من عدم ضياع البيانات
-  setInterval(()=>{ if(fbReady) saveToStorage(); }, 5*60*1000);
+  setInterval(()=>{ if(sbReady) saveToStorage(); }, 5*60*1000);
   const hadSaved = await loadFromStorage();
   renderDash();
   updateBadges();
