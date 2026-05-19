@@ -245,7 +245,25 @@ function doSaveUser(){
 // ACTIVITY LOG SYSTEM – سجل النشاط
 // ═══════════════════════════════════════════
 async function logActivity(action, details){
-  if(!sbReady||!sbClient||!currentUser)return;
+  if(!currentUser)return;
+  // حفظ محلي أولاً (دائماً)
+  try{
+    const logs=JSON.parse(localStorage.getItem('almuheet_activity')||'[]');
+    logs.push({
+      user: currentUser.username,
+      userName: currentUser.name,
+      role: currentUser.role,
+      action,
+      details,
+      timestamp: Date.now(),
+      date: new Date().toLocaleString('en-US',{timeZone:'Asia/Riyadh'})
+    });
+    if(logs.length>200)logs.splice(0,logs.length-200);
+    localStorage.setItem('almuheet_activity',JSON.stringify(logs));
+  }catch(e){console.warn('Local activity log error:',e);}
+  
+  // محاولة حفظ سحابي إذا كان متصلاً
+  if(!sbReady||!sbClient)return;
   try{
     const entry={
       user: currentUser.username,
@@ -256,20 +274,32 @@ async function logActivity(action, details){
       timestamp: Date.now(),
       date: new Date().toLocaleString('en-US',{timeZone:'Asia/Riyadh'})
     };
-    await sbClient.from(SB_ACTIVITY_TABLE).insert(entry);
+    await sbClient.from(SB_ACTIVITY_TABLE).insert(entry).catch(e=>{
+      if(e.code==='PGRST116'||e.message?.includes('does not exist')){
+        console.info('Activity table not yet created in Supabase');
+      }
+    });
   }catch(e){ console.warn('Activity log error:',e); }
 }
 
 async function loadActivityLog(limit=100){
-  if(!sbReady||!sbClient)return[];
+  // محاولة تحميل من Supabase أولاً
+  if(sbReady&&sbClient){
+    try{
+      const { data, error } = await sbClient
+        .from(SB_ACTIVITY_TABLE)
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .limit(limit);
+      if(!error && data) return data;
+    }catch(e){ console.warn('Activity load cloud error:',e); }
+  }
+  
+  // احتياطي: تحميل من localStorage
   try{
-    const { data, error } = await sbClient
-      .from(SB_ACTIVITY_TABLE)
-      .select('*')
-      .order('timestamp', { ascending: false })
-      .limit(limit);
-    return data || [];
-  }catch(e){ console.warn('Activity load error:',e); return[]; }
+    const logs=JSON.parse(localStorage.getItem('almuheet_activity')||'[]');
+    return logs.sort((a,b)=>b.timestamp-a.timestamp).slice(0,limit);
+  }catch(e){ console.warn('Activity load local error:',e); return[]; }
 }
 
 async function clearActivityLog(){
@@ -428,7 +458,7 @@ function settingsClearAllData(){
 
 // Archive file delete (admin only)
 function deleteArchiveFile(fileId,sub){
-  if(!canDeleteArchive()){showToast('⛔ لا تملك صلاحية حذف ملفات الأرشيف','danger');return;}
+  if(!canDeleteArchive()){showToast('⛔ ليس لديك صلاحية حذف ملفات الأرشيف – المدير فقط','danger');return;}
   if(!confirm('حذف هذا الملف من الأرشيف نهائياً؟'))return;
   if(FILE_STORE[fileId]) delete FILE_STORE[fileId];
   // Remove from row references
@@ -440,9 +470,35 @@ function deleteArchiveFile(fileId,sub){
   saveFileStore();
   saveToStorage();
   showToast('🗑️ تم حذف الملف','success');
-  if(sub==='contracts')renderArchContracts();
-  else if(sub==='receipts')renderArchReceipts();
-  else if(sub==='payments')renderArchPayments();
+  logActivity('حذف ملف من الأرشيف', fileId);
+  if(sub==='contracts')renderArchiveContracts();
+  else if(sub==='receipts')renderArchiveReceipts();
+  else if(sub==='payments')renderArchivePayments();
+}
+
+// Archive file edit (admin only) - show metadata
+async function editArchiveFile(fileId,sub){
+  if(!canDeleteArchive()){showToast('⛔ ليس لديك صلاحية تعديل ملفات الأرشيف – المدير فقط','danger');return;}
+  const f=FILE_STORE[fileId];
+  if(!f){showToast('❌ الملف غير موجود','error');return;}
+  
+  const meta = f.archiveMetadata||{};
+  const newNotes = prompt('ملاحظات إضافية على الملف:', meta.notes||'');
+  if(newNotes===null) return; // user cancelled
+  
+  if(!FILE_STORE[fileId]) FILE_STORE[fileId]={};
+  if(!FILE_STORE[fileId].archiveMetadata) FILE_STORE[fileId].archiveMetadata={};
+  FILE_STORE[fileId].archiveMetadata.notes = newNotes;
+  FILE_STORE[fileId].archiveMetadata.lastModified = new Date().toISOString();
+  FILE_STORE[fileId].archiveMetadata.modifiedBy = currentUser?.name||'النظام';
+  
+  await saveFileStore();
+  showToast('✅ تم تحديث الملف','success');
+  logActivity('تعديل ملف في الأرشيف', fileId);
+  
+  if(sub==='contracts')renderArchiveContracts();
+  else if(sub==='receipts')renderArchiveReceipts();
+  else if(sub==='payments')renderArchivePayments();
 }
 
 // ═══════════════════════════════════════════
@@ -515,7 +571,20 @@ function getRecordDate(r){
 async function saveFileStore(){
   try{localStorage.setItem(FILE_STORE_KEY,JSON.stringify(FILE_STORE));}catch(e){console.warn('File store save failed:',e);}
   if(sbReady&&sbClient){
-    try{await sbClient.from(SB_FILES_TABLE).upsert({id:1, files:JSON.stringify(FILE_STORE), updated:Date.now()});}catch(e){console.warn('SB file store save error:',e);}
+    try{
+      const { error } = await sbClient.from(SB_FILES_TABLE).upsert({id:1, files:JSON.stringify(FILE_STORE), updated:Date.now()});
+      if(error){
+        console.warn('SB file store save error:',error);
+        if(error.code==='PGRST116'||error.message?.includes('does not exist')){
+          sbReady=false; sbClient=null;
+          showSyncBadge('💾 التخزين المحلي فعال (جدول الأرشيف غير موجود)','#6b7280');
+        }
+      }
+    }catch(e){
+      console.warn('SB file store save error:',e);
+      sbReady=false; sbClient=null;
+      showSyncBadge('💾 التخزين المحلي فعال (خطأ في الأرشيف)','#6b7280');
+    }
   }
   renderArchiveCounts();
 }
@@ -525,10 +594,43 @@ async function loadFileStore(){
   if(sbReady&&sbClient){
     try{
       const { data, error } = await sbClient.from(SB_FILES_TABLE).select('*').single();
-      if(data && data.files){
-        try{FILE_STORE=JSON.parse(data.files);localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE));}catch(e){}
+      if(error){
+        console.warn('SB file store load error:',error);
+        if(error.code==='PGRST116'||error.message?.includes('does not exist')){
+          sbReady=false; sbClient=null;
+          showSyncBadge('💾 التخزين المحلي فعال (جدول الأرشيف غير موجود)','#6b7280');
+        }
+      } else if(data && data.files){
+        try{FILE_STORE=JSON.parse(data.files);localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE));}catch(e){console.warn('Invalid files JSON from Supabase:',e);}
       }
-    }catch(e){console.warn('SB file store load error:',e);}
+    }catch(e){
+      console.warn('SB file store load error:',e);
+      sbReady=false; sbClient=null;
+      showSyncBadge('💾 التخزين المحلي فعال (خطأ في الأرشيف)','#6b7280');
+    }
+  }
+}
+
+// ── تسجيل الملفات للأرشيف ──
+async function registerFilesForArchive(fileIds, metadata){
+  if(!fileIds||!Array.isArray(fileIds)||fileIds.length===0)return;
+  try{
+    fileIds.forEach(fid=>{
+      if(FILE_STORE[fid]){
+        // إضافة metadata للملف
+        FILE_STORE[fid].archiveMetadata={
+          sheet: metadata.sheet||'',
+          client: metadata.client||'',
+          proj: metadata.proj||'',
+          date: metadata.date||'',
+          addedDate: new Date().toISOString(),
+          addedBy: currentUser?.name||'النظام'
+        };
+      }
+    });
+    await saveFileStore();
+  }catch(err){
+    console.warn('Error registering files for archive:',err);
   }
 }
 function fileToBase64(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);});}
@@ -754,12 +856,14 @@ function makeArchCard(fileId,fname,label,client,proj,date,sheet){
   const kb=f.size?(f.size/1024).toFixed(0)+' KB':'';
   const uploadedDate = f.uploaded ? new Date(f.uploaded).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}) : '';
   const displayName = f.name||fname||'ملف';
+  const meta = f.archiveMetadata||{};
   return`<div class="arch-card">
     <div class="arch-card-hdr">
       <div class="arch-file-icon">${icon}</div>
       <div class="arch-card-info">
         <div class="arch-card-name" title="${f.name}">${f.name}</div>
         <div class="arch-card-sub">${label}</div>
+        ${meta.addedBy?`<div class="arch-card-meta-sm">👤 ${meta.addedBy}</div>`:''}
       </div>
     </div>
     <div class="arch-card-meta">
@@ -768,10 +872,12 @@ function makeArchCard(fileId,fname,label,client,proj,date,sheet){
       ${date?`<span class="arch-meta-tag">📅 ${date}</span>`:''}
       ${kb?`<span class="arch-meta-tag">📦 ${kb}</span>`:''}
     </div>
+    ${meta.notes?`<div class="arch-notes" style="font-size:.75rem;padding:6px;background:#f0fdf4;border-radius:6px;margin:6px 0;color:#166534;">📝 ${meta.notes}</div>`:''}
     <div class="arch-actions">
       <button class="arch-btn arch-btn-view" onclick="viewFile('${fileId}')">👁️ عرض</button>
       <button class="arch-btn arch-btn-dl" onclick="downloadFile('${fileId}')">⬇️ تحميل</button>
-      ${canDeleteArchive()?`<button class="arch-btn arch-btn-del" onclick="deleteArchiveFile('${fileId}','${sub}')">🗑️ حذف</button>`:''}
+      ${canDeleteArchive()?`<button class="arch-btn arch-btn-edit" onclick="editArchiveFile('${fileId}','${sheet}')" title="تعديل الملاحظات">✏️ تعديل</button>`:''}
+      ${canDeleteArchive()?`<button class="arch-btn arch-btn-del" onclick="deleteArchiveFile('${fileId}','${sheet}')">🗑️ حذف</button>`:''}
     </div>
   </div>`;
 }
@@ -936,12 +1042,11 @@ function goDataSub(sub){
   goPage('data');
 }
 function goPage(id){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  // Hide all pages including ones outside .content
+  document.querySelectorAll('.page').forEach(p=>{p.classList.remove('active');p.style.display='none';});
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   const pg=g(`page-${id}`);
   if(pg){pg.classList.add('active');pg.style.display='block';}
-  // hide all pages except active
-  document.querySelectorAll('.page:not(.active)').forEach(p=>p.style.display='none');
   document.querySelector(`.nav-item[data-page="${id}"]`)?.classList.add('active');
   g('topTitle').textContent=pageNames[id]||'';
   if(id==='dashboard')renderDash();
@@ -1373,65 +1478,79 @@ function collectInstRows(prefix){
 }
 
 async function saveRevRecord(){
-  const desc=gv('m_desc'),client=gv('m_client');
-  if(!desc||!client){alert('يرجى إدخال البيان واسم العميل على الأقل');return;}
-  const row={};
-  masterCols.forEach(c=>row[c]="");
-  row["البيان"]=desc;
-  row["اسم العميل"]=client;row["رقم الجوال"]=gv('m_mobile');
-  row["رقم العقار"] = gv('m_property_no');
-  row["اسم المهندس المشرف"] = gv('m_supervisor');
-  row["مبلغ المشروع"]=parseFloat(gv('m_proj_amt'))||"";
-  row["مبلغ الدفعة الاولى"]=parseFloat(gv('m_first_amt'))||"";
-  row["تاريخ الدفعة الاولى"]=gv('m_first_date');
-  row["طريقة الدفع (إيرادات)"]=gv('m_pay_rev');
-  row["رقم دفتر السند الدفعة الاولى"]=gv('m_first_book');
-  row["رقم سند القبض الدفعة الاولى"]=gv('m_first_receipt');
-  row["حالة المشروع"]=gv('m_status')||'نشط';
-  // Contract dates
-  row["تاريخ بداية العقد"]=gv('m_contract_date_start')||'';
-  row["تاريخ نهاية العقد"]=gv('m_contract_date_end')||'';
-  // Save file attachments
-  row["ملف_العقد"]=_tempRevFiles.contractFileId||'';
-  row["ملف_سند_القبض"]=_tempRevFiles.receiptFileId||'';
-  _tempRevFiles={contractFileId:'',receiptFileId:''};
-  const isSup=currentRevType==="الايرادات الاشراف";
-  const prefix=isSup?(currentContractType==='مقطوعية'?'maq':'sh'):'mi';
-  const insts=collectInstRows(prefix);
-  insts.forEach((x,i)=>{
-    row[`تاريخ قسط ${i+1}`]=x.date;
-    row[`مبلغ قسط ${i+1}`]=x.amt;
-    row[`رقم دفتر قسط ${i+1}`]=x.book;
-    row[`رقم قبض قسط ${i+1}`]=x.rcpt;
-    if(x.fileId)row[`ملف_قبض_قسط_${i+1}`]=x.fileId;
-  });
-  // Register files so they appear in Archive with metadata
-  const _fileIds = [];
-  if(row["ملف_العقد"]) _fileIds.push(row["ملف_العقد"]);
-  if(row["ملف_سند_القبض"]) _fileIds.push(row["ملف_سند_القبض"]);
-  for(let i=1;i<=12;i++){ if(row[`ملف_قبض_قسط_${i}`]) _fileIds.push(row[`ملف_قبض_قسط_${i}`]); }
-  await registerFilesForArchive(_fileIds, {sheet: 'ترحيل البيانات', client: row["اسم العميل"]||'', proj: row["رقم العقار"]||'', date: getRecordDate(row)||row["تاريخ الدفعة الاولى"]||''});
-  SD["ترحيل البيانات"].rows.push(row);
-  renumber("ترحيل البيانات");
-  await saveToStorage();
-  closeModal('addModal');renderTable();updateBadges();
-  alert('✅ تم حفظ الإيراد في ترحيل البيانات');
+  try{
+    const desc=gv('m_desc'),client=gv('m_client');
+    if(!desc||!client){showToast('⚠️ يرجى إدخال البيان واسم العميل على الأقل','warning');return;}
+    const row={};
+    masterCols.forEach(c=>row[c]="");
+    row["البيان"]=desc;
+    row["اسم العميل"]=client;row["رقم الجوال"]=gv('m_mobile');
+    row["رقم العقار"] = gv('m_property_no');
+    row["اسم المهندس المشرف"] = gv('m_supervisor');
+    row["مبلغ المشروع"]=parseFloat(gv('m_proj_amt'))||"";
+    row["مبلغ الدفعة الاولى"]=parseFloat(gv('m_first_amt'))||"";
+    row["تاريخ الدفعة الاولى"]=gv('m_first_date');
+    row["طريقة الدفع (إيرادات)"]=gv('m_pay_rev');
+    row["رقم دفتر السند الدفعة الاولى"]=gv('m_first_book');
+    row["رقم سند القبض الدفعة الاولى"]=gv('m_first_receipt');
+    row["حالة المشروع"]=gv('m_status')||'نشط';
+    // Contract dates
+    row["تاريخ بداية العقد"]=gv('m_contract_date_start')||'';
+    row["تاريخ نهاية العقد"]=gv('m_contract_date_end')||'';
+    // Save file attachments
+    row["ملف_العقد"]=_tempRevFiles.contractFileId||'';
+    row["ملف_سند_القبض"]=_tempRevFiles.receiptFileId||'';
+    _tempRevFiles={contractFileId:'',receiptFileId:''};
+    const isSup=currentRevType==="الايرادات الاشراف";
+    const prefix=isSup?(currentContractType==='مقطوعية'?'maq':'sh'):'mi';
+    const insts=collectInstRows(prefix);
+    insts.forEach((x,i)=>{
+      row[`تاريخ قسط ${i+1}`]=x.date;
+      row[`مبلغ قسط ${i+1}`]=x.amt;
+      row[`رقم دفتر قسط ${i+1}`]=x.book;
+      row[`رقم قبض قسط ${i+1}`]=x.rcpt;
+      if(x.fileId)row[`ملف_قبض_قسط_${i+1}`]=x.fileId;
+    });
+    // Register files so they appear in Archive with metadata
+    const _fileIds = [];
+    if(row["ملف_العقد"]) _fileIds.push(row["ملف_العقد"]);
+    if(row["ملف_سند_القبض"]) _fileIds.push(row["ملف_سند_القبض"]);
+    for(let i=1;i<=12;i++){ if(row[`ملف_قبض_قسط_${i}`]) _fileIds.push(row[`ملف_قبض_قسط_${i}`]); }
+    await registerFilesForArchive(_fileIds, {sheet: 'ترحيل البيانات', client: row["اسم العميل"]||'', proj: row["رقم العقار"]||'', date: getRecordDate(row)||row["تاريخ الدفعة الاولى"]||''});
+    SD["ترحيل البيانات"].rows.push(row);
+    renumber("ترحيل البيانات");
+    await saveToStorage();
+    closeModal('addModal');
+    renderTable();updateBadges();
+    showToast('✅ تم حفظ الإيراد بنجاح وترحيله','success');
+    logActivity('إضافة إيراد جديد', `${client} – ${desc}`);
+  }catch(err){
+    console.error('Error saving revenue:',err);
+    showToast('❌ حدث خطأ أثناء الحفظ: '+err.message,'error');
+  }
 }
 
 async function saveExpRecord(){
-  const date=gv('e_date'),desc=gv('e_desc'),cat=gv('e_cat');
-  if(!date||!desc||!cat){alert('يرجى إدخال التاريخ والبيان والتصنيف على الأقل');return;}
-  const expSh=SD["المصاريف"];
-  const newRow={"م":expSh.rows.length+1,"التاريخ":date,"البيان":desc,"تصنيف المصروف":cat,"رقم سند الصرف":gv('e_voucher'),"المبلغ":parseFloat(gv('e_amt'))||""," طريقة الصرف":gv('e_pay'),"المستفيد":gv('e_beneficiary'),"رقم الجوال":gv('e_ben_mobile'),"الرقم الشخصي":gv('e_ben_id'),"ملف_سند_الصرف":_tempExpFileId||''};
-  expSh.rows.push(newRow);
-  const _fileIds = [];
-  if(newRow["ملف_سند_الصرف"]) _fileIds.push(newRow["ملف_سند_الصرف"]);
-  await registerFilesForArchive(_fileIds, {sheet: 'المصاريف', client: newRow["المستفيد"]||newRow["البيان"]||'', proj: newRow["رقم سند الصرف"]||'', date: newRow["التاريخ"]||''});
-  _tempExpFileId='';
-  renumber("المصاريف");
-  closeModal('addExpModal');renderExpTable();updateBadges();
-  await saveToStorage();
-  alert('✅ تم حفظ المصروف');
+  try{
+    const date=gv('e_date'),desc=gv('e_desc'),cat=gv('e_cat');
+    if(!date||!desc||!cat){showToast('⚠️ يرجى إدخال التاريخ والبيان والتصنيف على الأقل','warning');return;}
+    const expSh=SD["المصاريف"];
+    const newRow={"م":expSh.rows.length+1,"التاريخ":date,"البيان":desc,"تصنيف المصروف":cat,"رقم سند الصرف":gv('e_voucher'),"المبلغ":parseFloat(gv('e_amt'))||"","طريقة الصرف":gv('e_pay'),"المستفيد":gv('e_beneficiary'),"رقم الجوال":gv('e_ben_mobile'),"الرقم الشخصي":gv('e_ben_id'),"ملف_سند_الصرف":_tempExpFileId||''};
+    expSh.rows.push(newRow);
+    const _fileIds = [];
+    if(newRow["ملف_سند_الصرف"]) _fileIds.push(newRow["ملف_سند_الصرف"]);
+    await registerFilesForArchive(_fileIds, {sheet: 'المصاريف', client: newRow["المستفيد"]||newRow["البيان"]||'', proj: newRow["رقم سند الصرف"]||'', date: newRow["التاريخ"]||''});
+    _tempExpFileId='';
+    renumber("المصاريف");
+    closeModal('addExpModal');
+    renderExpTable();updateBadges();
+    await saveToStorage();
+    showToast('✅ تم حفظ المصروف بنجاح','success');
+    logActivity('إضافة مصروف جديد', `${newRow["البيان"]} – ${parseFloat(gv('e_amt'))||0} ر.ق`);
+  }catch(err){
+    console.error('Error saving expense:',err);
+    showToast('❌ حدث خطأ أثناء الحفظ: '+err.message,'error');
+  }
 }
 
 // Keep old aliases
@@ -1906,8 +2025,9 @@ function initSearch(){
   document.addEventListener('click',e=>{if(!e.target.closest('.search-wrap'))drop.classList.remove('show');});
 }
 function gSearch_goto(sheet){
-  activeSheet=sheet;goPage('data');
+  activeSheet=sheet;
   g('searchDrop').classList.remove('show');g('gSearch').value='';
+  goDataSub('revenues');
 }
 
 // ═══════════════════════════════════════════
@@ -2089,8 +2209,14 @@ function showSyncBadge(msg,color){
 /* ── حفظ البيانات (Supabase أولاً – نسخة محلية احتياطية) ── */
 async function saveToStorage(){
   const serializedSD = JSON.stringify(SD);
-  // Always keep a local backup first so data survives refresh even if cloud sync is slow.
-  try{ localStorage.setItem(STORAGE_KEY, serializedSD); }catch(e){}
+  // احفظ نسخة محلية أولاً دائماً - يضمن عدم ضياع البيانات حتى لو كانت السحابة بطيئة
+  let localSaveSuccess = false;
+  try{
+    localStorage.setItem(STORAGE_KEY, serializedSD);
+    localSaveSuccess = true;
+  }catch(e){
+    console.warn('Local storage save failed:',e);
+  }
 
   if(sbReady && sbClient){
     try{
@@ -2101,16 +2227,24 @@ async function saveToStorage(){
           rows: (SD[n]?.rows||[]).map(r => ({...r}))
         };
       });
-      await sbClient.from(SB_DATA_TABLE).upsert({id:1, data: serializedSD, updated: Date.now()});
+      const { error } = await sbClient.from(SB_DATA_TABLE).upsert({id:1, data: serializedSD, updated: Date.now()});
+      if(error) throw error;
       showSyncBadge('☁️ تم الحفظ في السحابة','#10b981');
       try{ updateTopbarSync(true, Date.now()); }catch(e){}
-      return;
+      return true;
     }catch(e){
-      sbReady=false; sbClient=null;
-      showSyncBadge('💾 فشل مزامنة السحابة – تم الحفظ محلياً','#d97706');
-      try{ updateTopbarSync(false); }catch(err){}
+      console.warn('Cloud save error:',e);
+      if(localSaveSuccess){
+        sbReady=false;
+        showSyncBadge('💾 تم الحفظ محلياً (السحابة غير متاحة)','#d97706');
+        try{ updateTopbarSync(false); }catch(err){}
+      }else{
+        showSyncBadge('⚠️ فشل الحفظ - تحقق من المساحة المتاحة','#ef4444');
+      }
+      return false;
     }
   }
+  return localSaveSuccess;
 }
 
 /* ── تحميل البيانات ── */
@@ -2119,31 +2253,50 @@ async function loadFromStorage(){
   if(sbReady && sbClient){
     try{
       const { data, error } = await sbClient.from(SB_DATA_TABLE).select('*').single();
-      if(data && data.data){
-        const saved = JSON.parse(data.data);
-        sheetNames.forEach(n=>{
-          if(saved[n]?.rows){
-            if(!SD[n]) SD[n] = { columns: [], rows: [] };
-            SD[n].rows = saved[n].rows;
-            renumber(n);
-          }
-        });
-        await loadFileStore();
-        renderDash(); updateBadges();
-        showSyncBadge('☁️ تم التحميل من السحابة','#3b82f6');
-        try{ updateTopbarSync(true, Date.now()); }catch(e){}
-        return true;
+      if(error){
+        if(error.code==='PGRST116'||error.message?.includes('does not exist')){
+          console.info('Supabase data table not found - using localStorage');
+        } else {
+          console.warn('Supabase fetch error:', error);
+        }
+        sbReady=false;
+      } else if(data && data.data){
+        try{
+          const saved = JSON.parse(data.data);
+          sheetNames.forEach(n=>{
+            if(saved[n]?.rows){
+              if(!SD[n]) SD[n] = { columns: [], rows: [] };
+              SD[n].rows = saved[n].rows;
+              renumber(n);
+            }
+          });
+          await loadFileStore();
+          renderDash(); updateBadges();
+          showSyncBadge('☁️ تم التحميل من السحابة','#3b82f6');
+          try{ updateTopbarSync(true, Date.now()); }catch(e){}
+          return true;
+        }catch(parseErr){
+          console.warn('Failed to parse Supabase data:', parseErr);
+          sbReady=false;
+        }
       }
     }catch(e){
-      // Supabase فشل – نتحول لـlocalStorage بصمت
+      console.warn('Supabase connection error:',e);
       sbReady=false; sbClient=null;
     }
   }
   // احتياطي: localStorage
   try{
     const raw=localStorage.getItem(STORAGE_KEY);
-    if(!raw) return false;
+    if(!raw){
+      console.info('No data found in localStorage - starting fresh');
+      return false;
+    }
     const saved=JSON.parse(raw);
+    if(!saved||typeof saved!=='object'){
+      console.warn('Invalid data format in localStorage');
+      return false;
+    }
     sheetNames.forEach(n=>{
       if(saved[n]?.rows){
         if(!SD[n]) SD[n] = { columns: [], rows: [] };
@@ -2152,8 +2305,12 @@ async function loadFromStorage(){
       }
     });
     await loadFileStore();
+    showSyncBadge('💾 تم التحميل من التخزين المحلي','#6b7280');
     return true;
-  }catch(e){ return false; }
+  }catch(e){
+    console.warn('Failed to load from localStorage:',e);
+    return false;
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -2408,12 +2565,41 @@ window.addEventListener('beforeunload', ()=>{
   try{ localStorage.setItem(FILE_STORE_KEY, JSON.stringify(FILE_STORE)); }catch(e){}
 });
 
+// Blocker help modal functions
+function showBlockerHelp(){
+  const m=g('blockerHelpModal');
+  if(m)m.style.display='flex';
+}
+function hideBlockerHelp(){
+  const m=g('blockerHelpModal');
+  if(m)m.style.display='none';
+}
+// Attach blocker help button
+try{
+  const bhBtn=g('blockerHelpBtn');
+  if(bhBtn) bhBtn.addEventListener('click', showBlockerHelp);
+}catch(e){}
+
 initAuth().catch(console.error);
 
 // Expose commonly used functions to `window` for inline HTML handlers
 (() => {
   const names = [
-    'doLogin','loginKeyPress','logout','toggleDataMenu','goDataSub','toggleArchiveMenu','goArchiveSub','toggleUserDropdown','showMyPwModal','showUserModal','doSaveUser','toggleDark','requestNotifPermission','goPage','showClientStatement','applyFilter','clearFilter','applyExpFilter','clearExpFilter','openAddExpModal','exportSheetExcel','exportFullExcelReport','exportFullPDFReport','exportJSON','g','exportFiltered','addInstRow','closeModal','saveRevRecord','saveExpRecord','closeInstModal','saveEdit','printClientStatement','settingsToggleDark','settingsBackup','settingsRestore','settingsClearAllData','doChangePassword','selectRevType','setContractType','setManualInstCount','setMaqInst','selectRevType'
+    'doLogin','loginKeyPress','logout','toggleDataMenu','goDataSub','toggleArchiveMenu','goArchiveSub',
+    'toggleUserDropdown','showMyPwModal','showUserModal','doSaveUser','toggleDark','requestNotifPermission',
+    'goPage','showClientStatement','applyFilter','clearFilter','applyExpFilter','clearExpFilter',
+    'openAddExpModal','exportSheetExcel','exportFullExcelReport','exportFullPDFReport','exportJSON','g',
+    'exportFiltered','addInstRow','closeModal','saveRevRecord','saveExpRecord','closeInstModal','saveEdit',
+    'printClientStatement','settingsToggleDark','settingsBackup','settingsRestore','settingsClearAllData',
+    'doChangePassword','selectRevType','setContractType','setManualInstCount','setMaqInst',
+    // Additional functions used in HTML inline handlers
+    'openAddModal','bulkMigrate','openEdit','delRow','delExpRow','openEditExp','showInstModal',
+    'viewFile','downloadFile','deleteArchiveFile','editArchiveFile','selectAll','sortRevTable',
+    'sortExpTable','showClientStatementFor','setSheet','exportAllExcel','exportPDF','importJSON',
+    'importExcel','saveToStorage','printArchiveSub','downloadAllArchive','renderClientStatement',
+    'renderDash','onAmtChange','buildShahriFields','handleRevFileUpload','handleExpFileUpload',
+    'handleInstFileUpload','clearRevFile','clearExpFile','clearInstFile','showBlockerHelp','hideBlockerHelp',
+    'showChangePwModal','exportRptExcel','gSearch_goto'
   ];
   names.forEach(n=>{
     try{
