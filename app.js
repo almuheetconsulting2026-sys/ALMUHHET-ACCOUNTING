@@ -45,7 +45,7 @@ async function saveUsers(u){
   // حفظ سحابي
   if(sbReady&&sbClient){
     try{
-      const { error } = await sbClient.from(SB_USERS_TABLE).upsert({id:1, users:JSON.stringify(u), updated_at:Date.now()});
+      const { error } = await sbClient.from(SB_USERS_TABLE).upsert({id:1, users:u, updated_at:Date.now()});
       if(error){
         console.warn('Users save error:',error);
         showToast('⚠️ فشل حفظ البيانات في السحابة','warning');
@@ -69,7 +69,7 @@ async function loadUsersFromCloud(){
       return;
     }
     if(data && data.users){
-      const users = safeJsonParse(data.users);
+      const users = typeof data.users === 'string' ? safeJsonParse(data.users) : data.users;
       if(users && Object.keys(users).length>0){
         localStorage.setItem(USERS_KEY,JSON.stringify(users));
       }
@@ -304,11 +304,14 @@ async function logActivity(action, details){
       timestamp: Date.now(),
       date: new Date().toLocaleString('en-US',{timeZone:'Asia/Riyadh'})
     };
-    await sbClient.from(SB_ACTIVITY_TABLE).insert(entry).catch(e=>{
-      if(e.code==='PGRST116'||e.message?.includes('does not exist')){
+    const { error } = await sbClient.from(SB_ACTIVITY_TABLE).insert(entry);
+    if(error){
+      if(error.code==='PGRST116'||error.message?.includes('does not exist')){
         console.info('Activity table not yet created in Supabase');
+      }else{
+        console.warn('Activity insert error:',error);
       }
-    });
+    }
   }catch(e){ console.warn('Activity log error:',e); }
 }
 
