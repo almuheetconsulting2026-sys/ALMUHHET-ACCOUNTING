@@ -48,14 +48,16 @@ async function getUsersWithCloud(){
         if(cloudUsers && Object.keys(cloudUsers).length>0){
           // تحديث localStorage بالبيانات السحابية
           localStorage.setItem(USERS_KEY,JSON.stringify(cloudUsers));
-          console.log('Users loaded from cloud successfully');
+          console.log('Users loaded from cloud successfully:', Object.keys(cloudUsers));
           return cloudUsers;
         }
       }
     }catch(e){ console.warn('Cloud users load error:',e); }
   }
   // إذا فشل التحميل من السحابة، استخدم البيانات المحلية
-  return getUsers();
+  const localUsers = getUsers();
+  console.log('Using local users:', Object.keys(localUsers));
+  return localUsers;
 }
 function getDefaultUsers(){
   return {
