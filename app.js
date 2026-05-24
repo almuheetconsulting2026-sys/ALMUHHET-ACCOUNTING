@@ -40,13 +40,22 @@ function getDefaultUsers(){
 }
 
 // ── حفظ المستخدمين محلياً وسحابياً ──
-function saveUsers(u){
+async function saveUsers(u){
   localStorage.setItem(USERS_KEY,JSON.stringify(u));
   // حفظ سحابي
   if(sbReady&&sbClient){
-    sbClient.from(SB_USERS_TABLE).upsert({id:1, users:JSON.stringify(u), updated_at:Date.now()}).then(({error})=>{
-      if(error) console.warn('Users save error:',error);
-    });
+    try{
+      const { error } = await sbClient.from(SB_USERS_TABLE).upsert({id:1, users:JSON.stringify(u), updated_at:Date.now()});
+      if(error){
+        console.warn('Users save error:',error);
+        showToast('⚠️ فشل حفظ البيانات في السحابة','warning');
+      }else{
+        console.log('Users saved to cloud successfully');
+      }
+    }catch(e){
+      console.warn('Users save error:',e);
+      showToast('⚠️ فشل حفظ البيانات في السحابة','warning');
+    }
   }
 }
 
@@ -217,7 +226,7 @@ function showUserModal(username){
   openModal('manageUserModal');
 }
 
-function doSaveUser(){
+async function doSaveUser(){
   const oldUsername=g('manageUserOldUsername')?.value.trim();
   const username=g('manageUserUsername')?.value.trim();
   const name=g('manageUserName')?.value.trim();
@@ -245,7 +254,7 @@ function doSaveUser(){
     if(newPw!==confirm){showToast('⚠️ كلمات المرور غير متطابقة','warning');return;}
     users[username]={password:newPw,role,name};
   }
-  saveUsers(users);
+  await saveUsers(users);
   if(currentUser && currentUser.username===oldUsername){
     currentUser.username=username;
     currentUser.name=name;
