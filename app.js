@@ -27,7 +27,11 @@ function getUsers(){
     const s=localStorage.getItem(USERS_KEY);
     if(s){
       const stored = JSON.parse(s);
-      return {...getDefaultUsers(),...stored};
+      // إذا كانت البيانات المحلية فارغة، استخدم الافتراضية
+      if(Object.keys(stored).length===0){
+        return getDefaultUsers();
+      }
+      return stored;
     }
   }catch(e){}
   return getDefaultUsers();
@@ -74,9 +78,13 @@ async function loadUsersFromCloud(){
       return;
     }
     if(data && data.users){
-      const users = typeof data.users === 'string' ? safeJsonParse(data.users) : data.users;
-      if(users && Object.keys(users).length>0){
-        localStorage.setItem(USERS_KEY,JSON.stringify(users));
+      const cloudUsers = typeof data.users === 'string' ? safeJsonParse(data.users) : data.users;
+      if(cloudUsers && Object.keys(cloudUsers).length>0){
+        // دمج البيانات السحابية مع البيانات المحلية
+        const localUsers = getUsers();
+        const mergedUsers = {...localUsers,...cloudUsers};
+        localStorage.setItem(USERS_KEY,JSON.stringify(mergedUsers));
+        console.log('Users loaded from cloud and merged successfully');
       }
     }
   }catch(e){ console.warn('Users load error:',e); }
