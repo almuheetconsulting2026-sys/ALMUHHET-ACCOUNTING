@@ -48,7 +48,12 @@ async function saveUsers(u){
       const { error } = await sbClient.from(SB_USERS_TABLE).upsert({id:1, users:u, updated_at:Date.now()});
       if(error){
         console.warn('Users save error:',error);
-        showToast('⚠️ فشل حفظ البيانات في السحابة','warning');
+        if(error.code==='PGRST116'||error.message?.includes('does not exist')||error.code==='42P01'){
+          sbReady=false;
+          showToast('⚠️ جدول المستخدمين غير موجود في Supabase - يرجى تشغيل ملف supabase_setup.sql','warning');
+        }else{
+          showToast('⚠️ فشل حفظ البيانات في السحابة','warning');
+        }
       }else{
         console.log('Users saved to cloud successfully');
       }
