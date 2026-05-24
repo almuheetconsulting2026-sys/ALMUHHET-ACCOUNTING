@@ -36,6 +36,27 @@ function getUsers(){
   }catch(e){}
   return getDefaultUsers();
 }
+
+// ── قراءة المستخدمين من السحابة والمحلي معاً ──
+async function getUsersWithCloud(){
+  // محاولة التحميل من السحابة أولاً
+  if(sbReady&&sbClient){
+    try{
+      const { data, error } = await sbClient.from(SB_USERS_TABLE).select('*').single();
+      if(!error && data && data.users){
+        const cloudUsers = typeof data.users === 'string' ? safeJsonParse(data.users) : data.users;
+        if(cloudUsers && Object.keys(cloudUsers).length>0){
+          // تحديث localStorage بالبيانات السحابية
+          localStorage.setItem(USERS_KEY,JSON.stringify(cloudUsers));
+          console.log('Users loaded from cloud successfully');
+          return cloudUsers;
+        }
+      }
+    }catch(e){ console.warn('Cloud users load error:',e); }
+  }
+  // إذا فشل التحميل من السحابة، استخدم البيانات المحلية
+  return getUsers();
+}
 function getDefaultUsers(){
   return {
     admin:{password:'Admin@2025',role:'admin',name:'مدير النظام'},
@@ -103,10 +124,10 @@ function clearSession(){
   localStorage.removeItem(AUTH_KEY);
   currentUser=null;
 }
-function doLogin(){
+async function doLogin(){
   const uname=(document.getElementById('loginUsername').value||'').trim();
   const pw=document.getElementById('loginPassword').value||'';
-  const users=getUsers();
+  const users=await getUsersWithCloud();
   const user=users[uname];
   if(!user||user.password!==pw){
     const err=document.getElementById('loginError');
@@ -248,7 +269,7 @@ async function doSaveUser(){
   const confirm=g('manageUserPasswordConfirm')?.value||'';
   if(!username){showToast('⚠️ أدخل اسم المستخدم','warning');return;}
   if(!name){showToast('⚠️ أدخل اسم العرض','warning');return;}
-  const users=getUsers();
+  const users=await getUsersWithCloud();
   const editing=!!oldUsername;
   if(editing && !users[oldUsername]){showToast('⚠️ المستخدم غير موجود','warning');return;}
   if(oldUsername!==username && users[username]){showToast('⚠️ اسم المستخدم موجود بالفعل','warning');return;}
