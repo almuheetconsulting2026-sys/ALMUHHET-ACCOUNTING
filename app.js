@@ -44,7 +44,9 @@ function saveUsers(u){
   localStorage.setItem(USERS_KEY,JSON.stringify(u));
   // حفظ سحابي
   if(sbReady&&sbClient){
-    sbClient.from(SB_USERS_TABLE).upsert({id:1, users:JSON.stringify(u), updated:Date.now()}).catch(e=>console.warn('Users save error:',e));
+    sbClient.from(SB_USERS_TABLE).upsert({id:1, users:JSON.stringify(u), updated:Date.now()}).then(({error})=>{
+      if(error) console.warn('Users save error:',error);
+    });
   }
 }
 
@@ -234,7 +236,7 @@ function doSaveUser(){
   }
   let updated;
   if(editing){
-    updated={...users[oldUsername],name,role};
+    updated={...users[oldUsername],name,role,password:users[oldUsername].password};
     if(newPw)updated.password=newPw;
     if(oldUsername!==username){delete users[oldUsername];}
     users[username]=updated;
