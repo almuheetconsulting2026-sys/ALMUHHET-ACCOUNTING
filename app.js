@@ -44,7 +44,7 @@ function saveUsers(u){
   localStorage.setItem(USERS_KEY,JSON.stringify(u));
   // حفظ سحابي
   if(sbReady&&sbClient){
-    sbClient.from(SB_USERS_TABLE).upsert({id:1, users:JSON.stringify(u), updated:Date.now()}).then(({error})=>{
+    sbClient.from(SB_USERS_TABLE).upsert({id:1, users:JSON.stringify(u), updated_at:Date.now()}).then(({error})=>{
       if(error) console.warn('Users save error:',error);
     });
   }
@@ -593,7 +593,7 @@ async function saveFileStore(){
   try{localStorage.setItem(FILE_STORE_KEY,JSON.stringify(FILE_STORE));}catch(e){console.warn('File store save failed:',e);}
   if(sbReady&&sbClient){
     try{
-      const { error } = await sbClient.from(SB_FILES_TABLE).upsert({id:1, files:JSON.stringify(FILE_STORE), updated:Date.now()});
+      const { error } = await sbClient.from(SB_FILES_TABLE).upsert({id:1, files:JSON.stringify(FILE_STORE), updated_at:Date.now()});
       if(error){
         console.warn('SB file store save error:',error);
         if(error.code==='PGRST116'||error.message?.includes('does not exist')){
@@ -2251,7 +2251,7 @@ async function saveToStorage(){
           rows: (SD[n]?.rows||[]).map(r => ({...r}))
         };
       });
-      const { error } = await sbClient.from(SB_DATA_TABLE).upsert({id:1, data: serializedSD, updated: Date.now()});
+      const { error } = await sbClient.from(SB_DATA_TABLE).upsert({id:1, data: serializedSD, updated_at: Date.now()});
       if(error) throw error;
       showSyncBadge('☁️ تم الحفظ في السحابة','#10b981');
       try{ updateTopbarSync(true, Date.now()); }catch(e){}
